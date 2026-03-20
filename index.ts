@@ -86,13 +86,37 @@ export default function register(api: OpenClawPluginApi) {
             ctx.logger.info(`[suite] Attention from ${bridged.metadata.author} in space ${spaceId}`);
 
             // Run the agent via openclaw CLI — fully supported, battle-tested path
-            const reply = await runAgent(bridged.message.content, "main");
+            try {
+              const reply = await runAgent(bridged.message.content, "main");
 
-            if (reply && client) {
-              client.sendReply(spaceId, reply);
-              ctx.logger.info(`[suite] Reply sent to space ${spaceId} (${reply.length} chars)`);
-            } else {
-              ctx.logger.warn(`[suite] No reply from agent`);
+              if (reply && client) {
+                client.sendReply(spaceId, reply);
+                ctx.logger.info(`[suite] Reply sent to space ${spaceId} (${reply.length} chars)`);
+              } else {
+                ctx.logger.warn(`[suite] No reply from agent`);
+                if (client) {
+                  client.sendReply(spaceId, "_Agent produced no response._");
+                }
+              }
+            } catch (agentErr: any) {
+              const errMsg = agentErr.message || "Unknown error";
+              ctx.logger.error(`[suite] Agent error: ${errMsg}`);
+
+              // Parse common error patterns
+              let userMessage = "I encountered an error processing your message.";
+              if (errMsg.includes("401") || errMsg.includes("Unauthorized")) {
+                userMessage = "Authentication error with the model provider. The runtime admin needs to check API keys.";
+              } else if (errMsg.includes("429") || errMsg.includes("rate limit") || errMsg.includes("Too Many")) {
+                userMessage = "Rate limited by the model provider. Please try again in a moment.";
+              } else if (errMsg.includes("503") || errMsg.includes("529") || errMsg.includes("overloaded")) {
+                userMessage = "The model provider is currently overloaded. Please try again shortly.";
+              } else if (errMsg.includes("timeout")) {
+                userMessage = "The request timed out. Please try again.";
+              }
+
+              if (client) {
+                client.sendReply(spaceId, `⚠️ ${userMessage}`);
+              }
             }
           } catch (err: any) {
             ctx.logger.error(`[suite] Error: ${err.message}`);
