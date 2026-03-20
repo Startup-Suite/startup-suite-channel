@@ -2,6 +2,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk/core";
 import { SuiteClient } from "./src/suite-client.js";
 import { formatAttentionAsMessage } from "./src/message-bridge.js";
 import { readFileSync } from "node:fs";
+import { execFile } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,7 +22,32 @@ function loadConfig(): SuiteConfig {
   return JSON.parse(raw);
 }
 
-const SUITE_SESSION_PREFIX = "suite:";
+/**
+ * Run `openclaw agent` to send a message through the gateway and get a response.
+ * This is the same path as CLI usage — fully supported, no internal API guesswork.
+ */
+function runAgent(message: string, agentId?: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const args = ["agent", "--message", message, "--json"];
+    if (agentId) args.push("--agent", agentId);
+
+    execFile("openclaw", args, { timeout: 120_000 }, (err, stdout, stderr) => {
+      if (err) {
+        reject(new Error(`openclaw agent failed: ${err.message}\nstderr: ${stderr}`));
+        return;
+      }
+
+      try {
+        const result = JSON.parse(stdout);
+        const reply = result.reply || result.text || result.content || "";
+        resolve(typeof reply === "string" ? reply : JSON.stringify(reply));
+      } catch {
+        // If not JSON, use stdout directly (non --json fallback)
+        resolve(stdout.trim());
+      }
+    });
+  });
+}
 
 export default function register(api: OpenClawPluginApi) {
   let client: SuiteClient | null = null;
@@ -37,56 +63,27 @@ export default function register(api: OpenClawPluginApi) {
         async onAttention(payload) {
           try {
             const bridged = formatAttentionAsMessage(payload);
-            const sessionKey = bridged.sessionKey;
-            const spaceId = sessionKey.replace(SUITE_SESSION_PREFIX, "");
+            const spaceId = bridged.sessionKey.replace("suite:", "");
 
             ctx.logger.info(`[suite] Attention from ${bridged.metadata.author} in space ${spaceId}`);
 
-            // Inject message into OpenClaw agent via subagent.run
-            const result = await api.runtime.subagent.run({
-              sessionKey,
-              message: bridged.message.content,
-              deliver: false,
-            });
+            // Run the agent via openclaw CLI — fully supported, battle-tested path
+            const reply = await runAgent(bridged.message.content, "main");
 
-            ctx.logger.info(`[suite] Agent run started: ${result.runId}`);
-
-            // Wait for the agent to finish processing
-            const waitResult = await api.runtime.subagent.waitForRun({
-              runId: result.runId,
-              timeoutMs: 120000,
-            });
-
-            if (waitResult.status === "ok") {
-              // Retrieve the agent's response
-              const session = await api.runtime.subagent.getSessionMessages({
-                sessionKey,
-                limit: 5,
-              });
-
-              const lastAssistant = session.messages
-                .reverse()
-                .find((m: any) => m.role === "assistant");
-
-              if (lastAssistant && client) {
-                const content =
-                  typeof lastAssistant.content === "string"
-                    ? lastAssistant.content
-                    : JSON.stringify(lastAssistant.content);
-
-                client.sendReply(spaceId, content);
-                ctx.logger.info(`[suite] Reply sent to space ${spaceId}`);
-              }
+            if (reply && client) {
+              client.sendReply(spaceId, reply);
+              ctx.logger.info(`[suite] Reply sent to space ${spaceId} (${reply.length} chars)`);
             } else {
-              ctx.logger.warn(`[suite] Agent run failed: ${waitResult.status} ${waitResult.error || ""}`);
+              ctx.logger.warn(`[suite] No reply from agent`);
             }
           } catch (err: any) {
-            ctx.logger.error(`[suite] Error processing attention: ${err.message}`);
+            ctx.logger.error(`[suite] Error: ${err.message}`);
+            console.error(`[suite] Error:`, err);
           }
         },
 
         onToolResult(payload) {
-          ctx.logger.info(`[suite] Tool result received: ${payload.call_id}`);
+          ctx.logger.info(`[suite] Tool result: ${payload.call_id}`);
         },
 
         onDisconnect() {
