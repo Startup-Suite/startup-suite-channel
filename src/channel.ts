@@ -1,9 +1,7 @@
 import type { ChannelPlugin } from "openclaw/plugin-sdk/core";
-import { createScopedChannelConfigAdapter } from "openclaw/plugin-sdk/channel-config-helpers";
 import { Type } from "@sinclair/typebox";
 import { SuiteClient } from "./suite-client.js";
 import { handleSuiteInbound } from "./inbound.js";
-import { getSuiteRuntime } from "./runtime.js";
 import type { OpenClawConfig } from "./runtime-api.js";
 
 const CHANNEL_ID = "startup-suite";
@@ -29,7 +27,10 @@ export const suitePlugin: ChannelPlugin = {
   id: CHANNEL_ID,
 
   meta: {
+    id: CHANNEL_ID,
     label: "Startup Suite",
+    selectionLabel: "Startup Suite",
+    docsPath: "/plugins/developing-plugins",
     blurb: "Federated agent runtime via Startup Suite",
   },
 
@@ -38,14 +39,21 @@ export const suitePlugin: ChannelPlugin = {
     reply: true,
   },
 
-  config: createScopedChannelConfigAdapter({
-    channelId: CHANNEL_ID,
-    listAccountIds: () => ["default"],
-    resolveAccount: (_cfg, _accountId) => ({ id: "default" }),
-    isConfigured: () => true, // Suite uses its own config.json
-  }),
+  reload: { configPrefixes: [`channels.${CHANNEL_ID}`] },
 
-  tools: [
+  config: {
+    listAccountIds: () => ["default"],
+    resolveAccount: (_cfg, _accountId) => ({ accountId: "default", enabled: true }),
+    defaultAccountId: () => "default",
+    isConfigured: () => true,
+    describeAccount: () => ({
+      accountId: "default",
+      enabled: true,
+      configured: true,
+    }),
+  },
+
+  agentTools: [
     {
       name: "suite_canvas_create",
       label: "Create Suite Canvas",
@@ -101,20 +109,19 @@ export const suitePlugin: ChannelPlugin = {
   ],
 
   outbound: {
-    async sendText(params) {
+    deliveryMode: "direct",
+    async sendText({ to, text }) {
       const client = activeClient;
       if (!client) throw new Error("Suite client is not connected");
-      const spaceId = params.peer?.id;
-      if (!spaceId) throw new Error("Missing peer.id (space_id) for outbound message");
-      client.sendReply(spaceId, params.text);
+      if (!to) throw new Error("Missing Startup Suite space id");
+      client.sendReply(to, text);
+      return { ok: true, channel: CHANNEL_ID };
     },
   },
 
   gateway: {
-    async startAccount(params) {
-      const { config, runtime } = params;
-      const core = getSuiteRuntime();
-
+    async startAccount(ctx) {
+      const { cfg, runtime } = ctx;
       // Load Suite-specific config from config.json
       const { readFileSync } = await import("node:fs");
       const { dirname, join } = await import("node:path");
@@ -128,7 +135,7 @@ export const suitePlugin: ChannelPlugin = {
           try {
             await handleSuiteInbound({
               payload,
-              config: config as OpenClawConfig,
+              config: cfg as OpenClawConfig,
               runtime,
               client: activeClient!,
             });
