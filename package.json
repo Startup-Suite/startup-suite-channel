@@ -1,5 +1,5 @@
 {
-  "name": "@startup-suite/channel",
+  "name": "@startup-suite/startup-suite-channel",
   "version": "0.1.0",
   "type": "module",
   "description": "OpenClaw channel plugin for Startup Suite federation",
@@ -8,6 +8,7 @@
     "extensions": ["./index.ts"]
   },
   "dependencies": {
+    "@sinclair/typebox": "^0.32.0",
     "phoenix": "^1.7.0",
     "ws": "^8.0.0"
   },

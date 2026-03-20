@@ -24,6 +24,10 @@ export function formatContextPreamble(context: AttentionPayload["context"]): str
       lines.push(context.space.description);
     }
     lines.push("");
+    lines.push(`[Suite Context]`);
+    lines.push(`Space ID: ${context.space.id}`);
+    lines.push(`(use this space_id when calling suite_canvas_create, suite_canvas_update, suite_task_create, or suite_task_complete)`);
+    lines.push("");
   }
 
   if (context.canvases?.length) {

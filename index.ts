@@ -1,4 +1,5 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/core";
+import { Type } from "@sinclair/typebox";
 import { SuiteClient } from "./src/suite-client.js";
 import { formatAttentionAsMessage } from "./src/message-bridge.js";
 import { readFileSync } from "node:fs";
@@ -67,8 +68,78 @@ function runAgent(message: string, agentId?: string): Promise<string> {
   });
 }
 
+// ── Suite tool helpers ──────────────────────────────────────────────
+
+function suiteToolExecute(toolName: string, clientRef: () => SuiteClient | null) {
+  return async (_toolCallId: string, params: Record<string, unknown>) => {
+    const c = clientRef();
+    if (!c) throw new Error("Suite client is not connected");
+    const result = await c.callTool(toolName, params);
+    return { content: [{ type: "text" as const, text: JSON.stringify(result) }], details: result };
+  };
+}
+
 export default function register(api: OpenClawPluginApi) {
   let client: SuiteClient | null = null;
+  const getClient = () => client;
+
+  // ── Register Suite tools ────────────────────────────────────────
+
+  api.registerTool({
+    name: "suite_canvas_create",
+    label: "Create Suite Canvas",
+    description:
+      "Create a live collaborative canvas in a Startup Suite space. Use when the conversation calls for a shared visual artifact like a table, diagram, dashboard, or code block.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "UUID of the Suite space (from the conversation context)" }),
+      canvas_type: Type.Union(
+        [Type.Literal("table"), Type.Literal("dashboard"), Type.Literal("code"), Type.Literal("diagram"), Type.Literal("custom")],
+        { description: "Type of canvas to create" },
+      ),
+      title: Type.String({ description: "Human-readable title for the canvas" }),
+      initial_state: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Initial content for the canvas" })),
+    }),
+    execute: suiteToolExecute("canvas_create", getClient),
+  });
+
+  api.registerTool({
+    name: "suite_canvas_update",
+    label: "Update Suite Canvas",
+    description:
+      "Update an existing canvas in a Startup Suite space. Use to modify the content, title, or state of a canvas that was previously created.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "UUID of the Suite space" }),
+      canvas_id: Type.String({ description: "UUID of the canvas to update" }),
+      updates: Type.Record(Type.String(), Type.Unknown(), { description: "Fields to update on the canvas (e.g. title, state)" }),
+    }),
+    execute: suiteToolExecute("canvas_update", getClient),
+  });
+
+  api.registerTool({
+    name: "suite_task_create",
+    label: "Create Suite Task",
+    description:
+      "Create a task in a Startup Suite space. Use when the user requests a tracked to-do, action item, or work item.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "UUID of the Suite space" }),
+      title: Type.String({ description: "Title / summary of the task" }),
+      description: Type.Optional(Type.String({ description: "Longer description or acceptance criteria" })),
+      assignee_id: Type.Optional(Type.String({ description: "UUID of the participant to assign this task to" })),
+    }),
+    execute: suiteToolExecute("task_create", getClient),
+  });
+
+  api.registerTool({
+    name: "suite_task_complete",
+    label: "Complete Suite Task",
+    description:
+      "Mark an existing task as done in a Startup Suite space.",
+    parameters: Type.Object({
+      space_id: Type.String({ description: "UUID of the Suite space" }),
+      task_id: Type.String({ description: "UUID of the task to mark complete" }),
+    }),
+    execute: suiteToolExecute("task_complete", getClient),
+  });
 
   api.registerService({
     id: "suite-connection",
