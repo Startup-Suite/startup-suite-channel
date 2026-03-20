@@ -38,12 +38,30 @@ function runAgent(message: string, agentId?: string): Promise<string> {
       }
 
       try {
-        const result = JSON.parse(stdout);
-        const reply = result.reply || result.text || result.content || "";
+        // stdout may contain log lines before the JSON — find the JSON object
+        const jsonStart = stdout.indexOf("{");
+        const jsonStr = jsonStart >= 0 ? stdout.slice(jsonStart) : stdout;
+        const result = JSON.parse(jsonStr);
+
+        // Extract reply text from the structured result
+        let reply = "";
+        if (result.result?.payloads) {
+          reply = result.result.payloads
+            .map((p: any) => p.text || "")
+            .filter(Boolean)
+            .join("\n");
+        }
+        if (!reply) {
+          reply = result.reply || result.text || result.content || "";
+        }
+
         resolve(typeof reply === "string" ? reply : JSON.stringify(reply));
       } catch {
-        // If not JSON, use stdout directly (non --json fallback)
-        resolve(stdout.trim());
+        // If not JSON, strip log lines and use remaining stdout
+        const lines = stdout.split("\n").filter(
+          (l: string) => !l.startsWith("[") && l.trim() !== ""
+        );
+        resolve(lines.join("\n").trim());
       }
     });
   });
