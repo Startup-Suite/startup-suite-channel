@@ -35,6 +35,6 @@
         "default": 60000
       }
     },
-    "required": ["url", "runtimeId", "token"]
+    "required": []
   }
 }

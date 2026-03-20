@@ -1,20 +1,9 @@
 import type { AttentionPayload } from "./suite-client.js";
 
-export interface BridgedMessage {
-  sessionKey: string;
-  message: {
-    role: string;
-    content: string;
-  };
-  metadata: {
-    spaceId: string;
-    author: string;
-    reason: string;
-    tools?: Array<{ name: string; description: string; parameters: object }>;
-    history?: Array<{ content: string; author: string; role?: string }>;
-  };
-}
-
+/**
+ * Build a markdown preamble from Suite space context.
+ * Used by the inbound handler to enrich the agent envelope body.
+ */
 export function formatContextPreamble(context: AttentionPayload["context"]): string {
   const lines: string[] = [];
 
@@ -61,34 +50,4 @@ export function formatContextPreamble(context: AttentionPayload["context"]): str
   }
 
   return lines.join("\n");
-}
-
-export function formatAttentionAsMessage(payload: AttentionPayload): BridgedMessage {
-  const { signal, message, history, context, tools } = payload;
-
-  // Inject space_id from signal into context so preamble can use it
-  const enrichedContext = {
-    ...context,
-    space: { ...(context.space || {}), id: signal.space_id },
-  };
-  const preamble = formatContextPreamble(enrichedContext);
-
-  const content = preamble
-    ? `${preamble}---\n\n**${message.author}**: ${message.content}`
-    : `**${message.author}**: ${message.content}`;
-
-  return {
-    sessionKey: `suite:${signal.space_id}`,
-    message: {
-      role: "user",
-      content,
-    },
-    metadata: {
-      spaceId: signal.space_id,
-      author: message.author,
-      reason: signal.reason,
-      tools,
-      history,
-    },
-  };
 }
