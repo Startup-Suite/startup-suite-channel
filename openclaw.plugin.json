@@ -1,0 +1,40 @@
+{
+  "id": "startup-suite-channel",
+  "name": "Startup Suite Channel",
+  "description": "Connect to a Startup Suite deployment as a federated agent runtime",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "Suite WebSocket endpoint URL",
+        "default": "wss://suite.milvenan.technology/runtime/ws"
+      },
+      "runtimeId": {
+        "type": "string",
+        "description": "Registered runtime ID from Suite"
+      },
+      "token": {
+        "type": "string",
+        "description": "Authentication token for the runtime"
+      },
+      "autoJoinSpaces": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Space IDs to automatically join on connect",
+        "default": []
+      },
+      "reconnectIntervalMs": {
+        "type": "number",
+        "description": "Initial reconnection interval in milliseconds",
+        "default": 5000
+      },
+      "maxReconnectIntervalMs": {
+        "type": "number",
+        "description": "Maximum reconnection interval in milliseconds",
+        "default": 60000
+      }
+    },
+    "required": ["url", "runtimeId", "token"]
+  }
+}

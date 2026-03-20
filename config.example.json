@@ -1,0 +1,8 @@
+{
+  "url": "wss://suite.milvenan.technology/runtime/ws",
+  "runtimeId": "",
+  "token": "",
+  "autoJoinSpaces": [],
+  "reconnectIntervalMs": 5000,
+  "maxReconnectIntervalMs": 60000
+}

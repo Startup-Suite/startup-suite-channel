@@ -1,0 +1,153 @@
+import { Socket } from "phoenix";
+import WebSocket from "ws";
+
+export interface SuiteConfig {
+  url: string;
+  runtimeId: string;
+  token: string;
+  autoJoinSpaces: string[];
+  reconnectIntervalMs: number;
+  maxReconnectIntervalMs: number;
+}
+
+export interface SuiteHandlers {
+  onAttention: (payload: AttentionPayload) => void;
+  onToolResult: (payload: { call_id: string; result: unknown }) => void;
+  onDisconnect: () => void;
+}
+
+export interface AttentionPayload {
+  signal: { reason: string; space_id: string };
+  message: { content: string; author: string };
+  history: Array<{ content: string; author: string; role?: string }>;
+  context: {
+    space: { id: string; name: string; description?: string };
+    canvases?: Array<{ id: string; title: string; content: string }>;
+    tasks?: Array<{ id: string; title: string; status: string }>;
+    agents?: Array<{ id: string; name: string; status: string }>;
+    activity_summary?: string;
+  };
+  tools?: Array<{ name: string; description: string; parameters: object }>;
+}
+
+export class SuiteClient {
+  private socket: Socket | null = null;
+  private channel: any = null;
+  private config: SuiteConfig;
+  private handlers: SuiteHandlers;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempts: number = 0;
+  private stopped: boolean = false;
+
+  constructor(config: SuiteConfig, handlers: SuiteHandlers) {
+    this.config = config;
+    this.handlers = handlers;
+  }
+
+  connect(): void {
+    this.stopped = false;
+
+    // Phoenix JS client needs a WebSocket implementation in Node.js
+    (globalThis as any).WebSocket = WebSocket;
+
+    this.socket = new Socket(this.config.url, {
+      params: {
+        runtime_id: this.config.runtimeId,
+        token: this.config.token,
+      },
+    });
+
+    this.socket.onOpen(() => {
+      this.reconnectAttempts = 0;
+    });
+
+    this.socket.onClose(() => {
+      if (!this.stopped) {
+        this.handlers.onDisconnect();
+        this.scheduleReconnect();
+      }
+    });
+
+    this.socket.onError(() => {
+      if (!this.stopped) {
+        this.handlers.onDisconnect();
+      }
+    });
+
+    this.socket.connect();
+    this.joinChannel();
+  }
+
+  disconnect(): void {
+    this.stopped = true;
+
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
+    if (this.channel) {
+      this.channel.leave();
+      this.channel = null;
+    }
+
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+    }
+  }
+
+  sendReply(spaceId: string, content: string): void {
+    this.channel?.push("reply", { space_id: spaceId, content });
+  }
+
+  sendTyping(spaceId: string, typing: boolean): void {
+    this.channel?.push("typing", { space_id: spaceId, typing });
+  }
+
+  sendToolCall(callId: string, tool: string, args: object): void {
+    this.channel?.push("tool_call", { call_id: callId, tool, args });
+  }
+
+  private joinChannel(): void {
+    if (!this.socket) return;
+
+    const topic = `runtime:${this.config.runtimeId}`;
+    this.channel = this.socket.channel(topic, {});
+
+    this.channel.on("attention", (payload: AttentionPayload) => {
+      this.handlers.onAttention(payload);
+    });
+
+    this.channel.on("tool_result", (payload: { call_id: string; result: unknown }) => {
+      this.handlers.onToolResult(payload);
+    });
+
+    this.channel
+      .join()
+      .receive("ok", () => {
+        console.log(`[suite-client] Joined ${topic}`);
+      })
+      .receive("error", (reason: unknown) => {
+        console.error(`[suite-client] Failed to join ${topic}:`, reason);
+      });
+  }
+
+  private scheduleReconnect(): void {
+    if (this.stopped || this.reconnectTimer) return;
+
+    const delay = Math.min(
+      this.config.reconnectIntervalMs * Math.pow(2, this.reconnectAttempts),
+      this.config.maxReconnectIntervalMs
+    );
+
+    this.reconnectAttempts++;
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, delay);
+
+    console.log(`[suite-client] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+  }
+}
