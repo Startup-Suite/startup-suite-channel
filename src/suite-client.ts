@@ -150,6 +150,16 @@ export class SuiteClient {
     const topic = `runtime:${this.config.runtimeId}`;
     this.channel = this.socket.channel(topic, {});
 
+    this.channel.on("capabilities", (payload: { tools: any[]; tool_count: number }) => {
+      const registered = ["suite_canvas_create", "suite_canvas_update", "suite_task_create", "suite_task_complete"];
+      const available = (payload.tools || []).map((t: any) => t.name);
+      const unregistered = available.filter((t: string) => !registered.includes(`suite_${t}`));
+      if (unregistered.length > 0) {
+        console.warn(`[suite-client] Suite advertises tools not registered in plugin: ${unregistered.join(", ")}. Update the plugin to add these.`);
+      }
+      console.log(`[suite-client] Suite capabilities: ${payload.tool_count} tools available, ${registered.length} registered in plugin`);
+    });
+
     this.channel.on("attention", (payload: AttentionPayload) => {
       // Deduplicate — Suite may broadcast once but multiple channel joins can receive it
       const msgId = payload.signal?.message_id || payload.message?.content?.slice(0, 50) || "";
