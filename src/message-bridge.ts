@@ -66,7 +66,12 @@ export function formatContextPreamble(context: AttentionPayload["context"]): str
 export function formatAttentionAsMessage(payload: AttentionPayload): BridgedMessage {
   const { signal, message, history, context, tools } = payload;
 
-  const preamble = formatContextPreamble(context);
+  // Inject space_id from signal into context so preamble can use it
+  const enrichedContext = {
+    ...context,
+    space: { ...(context.space || {}), id: signal.space_id },
+  };
+  const preamble = formatContextPreamble(enrichedContext);
 
   const content = preamble
     ? `${preamble}---\n\n**${message.author}**: ${message.content}`
