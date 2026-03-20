@@ -156,15 +156,20 @@ export const suitePlugin: ChannelPlugin = {
       activeClient.connect();
       runtime.info?.(`startup-suite: connected as runtime ${suiteConfig.runtimeId}`);
 
-      // Return a stop function for cleanup
-      return {
-        stop() {
+      // Keep the account alive until abort signal fires
+      await new Promise<void>((resolve) => {
+        if (ctx.abortSignal.aborted) {
+          resolve();
+          return;
+        }
+        ctx.abortSignal.addEventListener("abort", () => {
           if (activeClient) {
             activeClient.disconnect();
             activeClient = null;
           }
-        },
-      };
+          resolve();
+        }, { once: true });
+      });
     },
   },
 };
