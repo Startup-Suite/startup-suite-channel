@@ -38,6 +38,7 @@ export class SuiteClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts: number = 0;
   private stopped: boolean = false;
+  private recentMessageIds = new Set<string>();
   private pendingToolCalls = new Map<string, { resolve: (value: any) => void; reject: (err: Error) => void }>();
 
   constructor(config: SuiteConfig, handlers: SuiteHandlers) {
@@ -69,6 +70,16 @@ export class SuiteClient {
   connect(): void {
     this.stopped = false;
 
+    // Clean up any existing connection first to prevent duplicate subscriptions
+    if (this.channel) {
+      try { this.channel.leave(); } catch {}
+      this.channel = null;
+    }
+    if (this.socket) {
+      try { this.socket.disconnect(); } catch {}
+      this.socket = null;
+    }
+
     // Phoenix JS client needs a WebSocket implementation in Node.js
     (globalThis as any).WebSocket = WebSocket;
 
@@ -77,6 +88,8 @@ export class SuiteClient {
         runtime_id: this.config.runtimeId,
         token: this.config.token,
       },
+      // Disable Phoenix's built-in reconnect — we handle it ourselves
+      reconnectAfterMs: () => 999999999,
     });
 
     this.socket.onOpen(() => {
@@ -138,6 +151,16 @@ export class SuiteClient {
     this.channel = this.socket.channel(topic, {});
 
     this.channel.on("attention", (payload: AttentionPayload) => {
+      // Deduplicate — Suite may broadcast once but multiple channel joins can receive it
+      const msgId = payload.signal?.message_id || payload.message?.content?.slice(0, 50) || "";
+      const dedupeKey = `${payload.signal?.space_id}:${msgId}:${Date.now() >> 10}`; // ~1s window
+      if (this.recentMessageIds.has(dedupeKey)) return;
+      this.recentMessageIds.add(dedupeKey);
+      // Clean old entries
+      if (this.recentMessageIds.size > 50) {
+        const first = this.recentMessageIds.values().next().value;
+        if (first) this.recentMessageIds.delete(first);
+      }
       this.handlers.onAttention(payload);
     });
 
