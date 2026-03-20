@@ -15,9 +15,16 @@ export function getActiveClient(): SuiteClient | null {
 // ── Suite tool helpers ──────────────────────────────────────────────
 
 function suiteToolExecute(toolName: string) {
-  return async (_toolCallId: string, params: Record<string, unknown>) => {
+  return async (toolCallId: string, params: Record<string, unknown>) => {
     const c = activeClient;
     if (!c) throw new Error("Suite client is not connected");
+
+    // Debug: log the raw args to catch serialization mismatches
+    if (!params || typeof params !== "object" || typeof params === "string") {
+      console.error(`[suite-tool] ${toolName}: invalid params type=${typeof params}, toolCallId=${toolCallId}, raw=`, params);
+      throw new Error(`Invalid args for ${toolName}: expected object, got ${typeof params} (${JSON.stringify(params).slice(0, 200)})`);
+    }
+
     const result = await c.callTool(toolName, params);
     return { content: [{ type: "text" as const, text: JSON.stringify(result) }], details: result };
   };
