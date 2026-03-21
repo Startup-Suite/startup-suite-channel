@@ -140,6 +140,15 @@ export class SuiteClient {
     this.channel?.push("typing", { space_id: spaceId, typing });
   }
 
+  sendReplyChunk(spaceId: string, chunkId: string, text: string, done: boolean): void {
+    this.channel?.push("reply_chunk", {
+      space_id: spaceId,
+      chunk_id: chunkId,
+      text,
+      done,
+    });
+  }
+
   sendToolCall(callId: string, tool: string, args: object): void {
     this.channel?.push("tool_call", { call_id: callId, tool, args });
   }

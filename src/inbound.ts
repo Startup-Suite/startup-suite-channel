@@ -90,26 +90,66 @@ export async function handleSuiteInbound(params: {
     CommandAuthorized: true, // Suite handles its own auth
   });
 
-  // Dispatch through the full agent pipeline
-  await dispatchInboundReplyWithBase({
-    cfg: config,
-    channel: CHANNEL_ID,
-    accountId: "default",
-    route,
-    storePath,
-    ctxPayload,
-    core,
-    deliver: async (replyPayload) => {
-      const text = replyPayload.text || "";
-      if (text && client) {
+  // Dispatch through the full agent pipeline with streaming chunks
+  const chunkId = `chunk_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  let accumulatedText = "";
+  let lastChunkSentAt = 0;
+  const CHUNK_THROTTLE_MS = 200;
+  let pendingFlush: ReturnType<typeof setTimeout> | null = null;
+
+  const flushChunk = (done: boolean) => {
+    if (pendingFlush) {
+      clearTimeout(pendingFlush);
+      pendingFlush = null;
+    }
+    if (accumulatedText && client) {
+      client.sendReplyChunk(spaceId, chunkId, accumulatedText, done);
+      lastChunkSentAt = Date.now();
+    }
+  };
+
+  client.sendTyping(spaceId, true);
+
+  try {
+    await dispatchInboundReplyWithBase({
+      cfg: config,
+      channel: CHANNEL_ID,
+      accountId: "default",
+      route,
+      storePath,
+      ctxPayload,
+      core,
+      deliver: async (replyPayload) => {
+        const text = replyPayload.text || "";
+        if (!text || !client) return;
+
+        accumulatedText = text;
+
+        // Throttle intermediate chunks to ~200ms
+        const elapsed = Date.now() - lastChunkSentAt;
+        if (elapsed >= CHUNK_THROTTLE_MS) {
+          flushChunk(false);
+        } else if (!pendingFlush) {
+          pendingFlush = setTimeout(() => {
+            pendingFlush = null;
+            flushChunk(false);
+          }, CHUNK_THROTTLE_MS - elapsed);
+        }
+
+        // Always send the final reply through the normal path
         client.sendReply(spaceId, text);
-      }
-    },
-    onRecordError: (err) => {
-      runtime.error?.(`startup-suite: session meta error: ${String(err)}`);
-    },
-    onDispatchError: (err, info) => {
-      runtime.error?.(`startup-suite ${info.kind} reply failed: ${String(err)}`);
-    },
-  });
+      },
+      onRecordError: (err) => {
+        runtime.error?.(`startup-suite: session meta error: ${String(err)}`);
+      },
+      onDispatchError: (err, info) => {
+        runtime.error?.(`startup-suite ${info.kind} reply failed: ${String(err)}`);
+      },
+    });
+
+    // Signal streaming done so UI clears the streaming bubble
+    flushChunk(true);
+  } finally {
+    client.sendTyping(spaceId, false);
+  }
 }
