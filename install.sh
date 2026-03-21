@@ -5,6 +5,72 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EXT_DIR="$HOME/.openclaw/extensions/startup-suite-channel"
 OC_CONFIG="$HOME/.openclaw/openclaw.json"
 
+# ── Parse arguments ────────────────────────────────────────────────
+SUITE_URL=""
+RUNTIME_ID=""
+TOKEN=""
+
+usage() {
+  echo "Usage: install.sh [OPTIONS]"
+  echo ""
+  echo "Options:"
+  echo "  --url URL          Suite WebSocket URL (default: wss://suite.milvenan.technology/runtime/ws)"
+  echo "  --runtime-id ID    Runtime ID from Suite federate flow"
+  echo "  --token TOKEN      Authentication token from Suite federate flow"
+  echo "  -h, --help         Show this help"
+  echo ""
+  echo "Interactive mode (no args):"
+  echo "  ./install.sh"
+  echo ""
+  echo "Non-interactive mode:"
+  echo "  ./install.sh --runtime-id my-runtime --token abc123"
+  exit 0
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --url) SUITE_URL="$2"; shift 2 ;;
+    --runtime-id) RUNTIME_ID="$2"; shift 2 ;;
+    --token) TOKEN="$2"; shift 2 ;;
+    -h|--help) usage ;;
+    *) echo "Unknown option: $1"; usage ;;
+  esac
+done
+
+# ── Interactive prompts if values not provided ─────────────────────
+if [ -z "$RUNTIME_ID" ] || [ -z "$TOKEN" ]; then
+  echo "Startup Suite Channel — Plugin Installer"
+  echo "========================================="
+  echo ""
+  echo "You'll need a runtime ID and token from Suite."
+  echo "Get these from: Agent Resources → Add Agent → Federate"
+  echo ""
+
+  if [ -z "$SUITE_URL" ]; then
+    read -rp "Suite URL [wss://suite.milvenan.technology/runtime/ws]: " SUITE_URL
+  fi
+
+  if [ -z "$RUNTIME_ID" ]; then
+    read -rp "Runtime ID: " RUNTIME_ID
+    if [ -z "$RUNTIME_ID" ]; then
+      echo "Error: Runtime ID is required."
+      exit 1
+    fi
+  fi
+
+  if [ -z "$TOKEN" ]; then
+    read -rp "Token: " TOKEN
+    if [ -z "$TOKEN" ]; then
+      echo "Error: Token is required."
+      exit 1
+    fi
+  fi
+
+  echo ""
+fi
+
+SUITE_URL="${SUITE_URL:-wss://suite.milvenan.technology/runtime/ws}"
+
 echo "Installing Startup Suite Channel plugin..."
 echo ""
 
@@ -19,27 +85,26 @@ cp "$SCRIPT_DIR/package.json" \
 
 cp "$SCRIPT_DIR/src/"*.ts "$EXT_DIR/src/"
 
-echo "  Copied plugin files to $EXT_DIR"
+echo "  ✓ Copied plugin files to $EXT_DIR"
 
 # ── 2. Install npm dependencies ───────────────────────────────────
 (cd "$EXT_DIR" && npm install --loglevel=warn)
-echo "  Installed npm dependencies"
+echo "  ✓ Installed npm dependencies"
 
-# ── 3. Create config.json from example if missing ─────────────────
-if [ ! -f "$EXT_DIR/config.json" ]; then
-  cp "$SCRIPT_DIR/config.example.json" "$EXT_DIR/config.json"
-  echo "  Created config.json from example"
-else
-  echo "  config.json already exists — keeping existing"
-fi
+# ── 3. Write config.json with provided values ─────────────────────
+cat > "$EXT_DIR/config.json" <<CONFIGEOF
+{
+  "url": "$SUITE_URL",
+  "runtimeId": "$RUNTIME_ID",
+  "token": "$TOKEN",
+  "autoJoinSpaces": [],
+  "reconnectIntervalMs": 5000,
+  "maxReconnectIntervalMs": 60000
+}
+CONFIGEOF
+echo "  ✓ Wrote config.json with runtime credentials"
 
 # ── 4. Register channel + plugin in openclaw.json ─────────────────
-configure_with_cli() {
-  openclaw config set channels.startup-suite.enabled true 2>/dev/null &&
-  openclaw config set channels.startup-suite.dmPolicy allowlist 2>/dev/null &&
-  openclaw config set 'channels.startup-suite.allowFrom[0]' '*' 2>/dev/null
-}
-
 configure_with_python() {
   python3 - "$OC_CONFIG" <<'PYEOF'
 import json, sys
@@ -76,29 +141,27 @@ with open(path, "w") as f:
 PYEOF
 }
 
-if command -v openclaw &>/dev/null && configure_with_cli; then
-  # Also add plugin entries via CLI if supported, fall back to python
-  openclaw config set 'plugins.allow[]' startup-suite-channel 2>/dev/null || true
-  openclaw config set 'plugins.entries[]' startup-suite-channel 2>/dev/null || true
-  echo "  Configured openclaw.json via CLI"
-else
-  configure_with_python
-  echo "  Configured openclaw.json via python3"
+configure_with_python
+echo "  ✓ Configured openclaw.json"
+
+# ── 5. Test connection (optional) ─────────────────────────────────
+echo ""
+read -rp "Test connection now? [Y/n]: " TEST_NOW
+TEST_NOW="${TEST_NOW:-y}"
+
+if [[ "$TEST_NOW" =~ ^[Yy] ]]; then
+  if [ -f "$SCRIPT_DIR/scripts/test-connection.sh" ]; then
+    bash "$SCRIPT_DIR/scripts/test-connection.sh"
+  elif [ -f "$SCRIPT_DIR/scripts/test-connection.js" ]; then
+    node "$SCRIPT_DIR/scripts/test-connection.js"
+  else
+    echo "  No test script found — skipping"
+  fi
 fi
 
 # ── Done ───────────────────────────────────────────────────────────
 echo ""
-echo "Installation complete!"
+echo "✅ Installation complete!"
 echo ""
-echo "Next steps:"
-echo "  1. Register a runtime in Suite:"
-echo "     Agent Resources -> Add Agent -> Federate"
-echo ""
-echo "  2. Copy the runtime_id and token, then edit:"
-echo "     $EXT_DIR/config.json"
-echo ""
-echo "  3. Test the connection:"
-echo "     bash $SCRIPT_DIR/scripts/test-connection.sh"
-echo ""
-echo "  4. Restart the gateway:"
-echo "     openclaw gateway restart"
+echo "Restart OpenClaw to activate:"
+echo "  openclaw gateway restart"

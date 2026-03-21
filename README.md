@@ -23,37 +23,42 @@ After connecting, the plugin joins a Phoenix channel (`runtime:<id>`) and listen
 
 ## Installation
 
+First, register a runtime in Suite: **Agent Resources → Add Agent → Federate**. Copy the runtime ID and token.
+
+### Interactive (recommended)
+
 ```bash
 git clone https://github.com/Startup-Suite/startup-suite-channel.git
 cd startup-suite-channel
 bash install.sh
 ```
 
-The install script copies the plugin to `~/.openclaw/extensions/startup-suite-channel/`, installs dependencies, creates a default `config.json`, and registers the channel in `openclaw.json`.
+The script will prompt for your runtime ID and token, then handle everything: file copy, npm install, config, and OpenClaw registration.
 
-## Configuration
-
-After install:
-
-1. Register a runtime in Suite (**Agent Resources → Add Agent → Federate**)
-2. Copy the `runtime_id` and `token` from Suite
-3. Edit `~/.openclaw/extensions/startup-suite-channel/config.json`:
-
-```json
-{
-  "url": "wss://your-suite.example.com/runtime/ws",
-  "runtimeId": "your-runtime-id",
-  "token": "your-token"
-}
-```
-
-4. Test the connection:
+### Non-interactive
 
 ```bash
-bash scripts/test-connection.sh
+bash install.sh --runtime-id my-runtime --token abc123def456
 ```
 
-5. Restart OpenClaw:
+With a custom Suite URL:
+
+```bash
+bash install.sh \
+  --url wss://suite.example.com/runtime/ws \
+  --runtime-id my-runtime \
+  --token abc123def456
+```
+
+### What the installer does
+
+1. Copies plugin files to `~/.openclaw/extensions/startup-suite-channel/`
+2. Installs npm dependencies
+3. Writes `config.json` with your runtime credentials
+4. Registers the channel and plugin in `openclaw.json`
+5. Optionally tests the connection
+
+After install, restart OpenClaw:
 
 ```bash
 openclaw gateway restart
