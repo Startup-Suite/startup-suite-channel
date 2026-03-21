@@ -4,6 +4,7 @@ import { formatContextPreamble } from "./src/message-bridge.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -204,11 +205,58 @@ const plugin = {
         },
         required: ["space_id", "canvas_type", "title"],
       },
-      execute: async (args: any) => {
+      execute: async (toolCallId: string, args: any) => {
         if (!activeClient) return { content: "Suite not connected" };
         try {
           const result = await activeClient.callTool("canvas_create", args);
           return { content: JSON.stringify(result) };
+        } catch (err: any) {
+          return { content: `Error: ${err.message}` };
+        }
+      },
+    } as any);
+
+    // Send a message with media attachments (images, files) into a Suite space
+    api.registerTool({
+      name: "suite_send_media",
+      description: "Send a message with file attachments (images, documents) into a Startup Suite space. Use for sharing diagrams, screenshots, or generated files.",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          space_id: { type: "string", description: "UUID of the Suite space" },
+          content: { type: "string", description: "Message text (markdown supported)" },
+          file_paths: {
+            type: "array",
+            items: { type: "string" },
+            description: "Local file paths to attach",
+          },
+        },
+        required: ["space_id", "file_paths"],
+      },
+      execute: async (toolCallId: string, args: any) => {
+        if (!activeClient) return { content: "Suite not connected" };
+        const { space_id, content = "", file_paths = [] } = args;
+
+        try {
+          const attachments = await Promise.all(
+            (file_paths as string[]).map(async (filePath: string) => {
+              const data = await readFile(filePath);
+              const filename = filePath.split("/").pop() || "attachment";
+              // Basic MIME type from extension
+              const ext = filename.split(".").pop()?.toLowerCase() || "";
+              const mimeMap: Record<string, string> = {
+                png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+                gif: "image/gif", webp: "image/webp", pdf: "application/pdf",
+                txt: "text/plain", md: "text/markdown", json: "application/json",
+                svg: "image/svg+xml",
+              };
+              const contentType = mimeMap[ext] || "application/octet-stream";
+              return { filename, contentType, data: data.toString("base64") };
+            })
+          );
+
+          activeClient.sendReplyWithMedia(space_id, content, attachments);
+          return { content: `Sent message with ${attachments.length} attachment(s) to space ${space_id}` };
         } catch (err: any) {
           return { content: `Error: ${err.message}` };
         }

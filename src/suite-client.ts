@@ -144,6 +144,26 @@ export class SuiteClient {
     this.channel?.push("tool_call", { call_id: callId, tool, args });
   }
 
+  sendReplyWithMedia(
+    spaceId: string,
+    content: string,
+    attachments: Array<{
+      filename: string;
+      contentType: string;
+      data: string; // base64
+    }>
+  ): void {
+    this.channel?.push("reply_with_media", {
+      space_id: spaceId,
+      content,
+      attachments: attachments.map((a) => ({
+        filename: a.filename,
+        content_type: a.contentType,
+        data: a.data,
+      })),
+    });
+  }
+
   private joinChannel(): void {
     if (!this.socket) return;
 
