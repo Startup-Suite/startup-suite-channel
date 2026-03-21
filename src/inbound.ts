@@ -90,21 +90,34 @@ export async function handleSuiteInbound(params: {
     CommandAuthorized: true, // Suite handles its own auth
   });
 
-  // Dispatch through the full agent pipeline with streaming chunks
+  // Dispatch through the full agent pipeline with token-level streaming
   const chunkId = `chunk_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  let accumulatedText = "";
+  let lastChunkText = "";
   let lastChunkSentAt = 0;
-  const CHUNK_THROTTLE_MS = 200;
+  const CHUNK_THROTTLE_MS = 150;
   let pendingFlush: ReturnType<typeof setTimeout> | null = null;
 
-  const flushChunk = (done: boolean) => {
+  const flushChunk = (text: string, done: boolean) => {
     if (pendingFlush) {
       clearTimeout(pendingFlush);
       pendingFlush = null;
     }
-    if (accumulatedText && client) {
-      client.sendReplyChunk(spaceId, chunkId, accumulatedText, done);
+    if (text && client) {
+      client.sendReplyChunk(spaceId, chunkId, text, done);
       lastChunkSentAt = Date.now();
+      lastChunkText = text;
+    }
+  };
+
+  const scheduleFlush = (text: string) => {
+    const elapsed = Date.now() - lastChunkSentAt;
+    if (elapsed >= CHUNK_THROTTLE_MS) {
+      flushChunk(text, false);
+    } else if (!pendingFlush) {
+      pendingFlush = setTimeout(() => {
+        pendingFlush = null;
+        flushChunk(text, false);
+      }, CHUNK_THROTTLE_MS - elapsed);
     }
   };
 
@@ -122,21 +135,7 @@ export async function handleSuiteInbound(params: {
       deliver: async (replyPayload) => {
         const text = replyPayload.text || "";
         if (!text || !client) return;
-
-        accumulatedText = text;
-
-        // Throttle intermediate chunks to ~200ms
-        const elapsed = Date.now() - lastChunkSentAt;
-        if (elapsed >= CHUNK_THROTTLE_MS) {
-          flushChunk(false);
-        } else if (!pendingFlush) {
-          pendingFlush = setTimeout(() => {
-            pendingFlush = null;
-            flushChunk(false);
-          }, CHUNK_THROTTLE_MS - elapsed);
-        }
-
-        // Always send the final reply through the normal path
+        // Final delivery — send through the normal path (persisted message)
         client.sendReply(spaceId, text);
       },
       onRecordError: (err) => {
@@ -145,11 +144,24 @@ export async function handleSuiteInbound(params: {
       onDispatchError: (err, info) => {
         runtime.error?.(`startup-suite ${info.kind} reply failed: ${String(err)}`);
       },
+      replyOptions: {
+        onPartialReply: (payload) => {
+          // Token-level streaming — called as the model generates text
+          const text = payload.text || "";
+          if (text && text !== lastChunkText) {
+            scheduleFlush(text);
+          }
+        },
+      },
     });
 
     // Signal streaming done so UI clears the streaming bubble
-    flushChunk(true);
+    flushChunk(lastChunkText || "", true);
   } finally {
+    if (pendingFlush) {
+      clearTimeout(pendingFlush);
+      pendingFlush = null;
+    }
     client.sendTyping(spaceId, false);
   }
 }
