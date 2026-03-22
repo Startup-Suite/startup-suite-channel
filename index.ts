@@ -183,8 +183,9 @@ const plugin = {
             const unsubDiag = onDiagnosticEvent((evt) => {
               if (evt.type !== "model.usage") return;
               const usageEvt = evt as DiagnosticUsageEvent;
+              console.log(`[suite-usage] diagnostic event: channel=${usageEvt.channel} sessionKey=${usageEvt.sessionKey} model=${usageEvt.model}`);
               // Only forward events from startup-suite channel sessions
-              if (usageEvt.channel !== "startup-suite") return;
+              if (!usageEvt.sessionKey?.includes("startup-suite")) return;
               // Use lastCallUsage (per-request) if available, else cumulative
               const u = usageEvt.lastCallUsage || usageEvt.usage || {};
               // Extract space_id from session key (format: startup-suite:default:group:<space_id>)
@@ -294,6 +295,100 @@ const plugin = {
           return { content: `Error: ${err.message}` };
         }
       },
+    } as any);
+
+    // ── Task management tools ─────────────────────────────────────────────
+
+    const suiteToolHelper = async (toolName: string, args: any) => {
+      if (!activeClient) return { content: "Suite not connected" };
+      try {
+        const result = await activeClient.callTool(toolName, args);
+        return { content: JSON.stringify(result, null, 2) };
+      } catch (err: any) {
+        return { content: `Error: ${err.message}` };
+      }
+    };
+
+    api.registerTool({
+      name: "suite_project_list",
+      description: "List all projects in Startup Suite.",
+      parameters: { type: "object" as const, properties: {} },
+      execute: async (_id: string, args: any) => suiteToolHelper("project_list", args),
+    } as any);
+
+    api.registerTool({
+      name: "suite_epic_list",
+      description: "List epics in Startup Suite, optionally filtered by project.",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          project_id: { type: "string", description: "Filter by project ID (optional)" },
+        },
+      },
+      execute: async (_id: string, args: any) => suiteToolHelper("epic_list", args),
+    } as any);
+
+    api.registerTool({
+      name: "suite_task_create",
+      description: "Create a task in Startup Suite. Tasks appear on the kanban board at /tasks.",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          project_id: { type: "string", description: "Project ID (required)" },
+          title: { type: "string", description: "Task title (required)" },
+          description: { type: "string", description: "Task description" },
+          epic_id: { type: "string", description: "Epic ID to assign to" },
+          status: { type: "string", description: "Initial status: backlog (default), planning, ready, in_progress, in_review, done, blocked" },
+          priority: { type: "string", description: "Priority: low, medium (default), high, critical" },
+        },
+        required: ["project_id", "title"],
+      },
+      execute: async (_id: string, args: any) => suiteToolHelper("task_create", args),
+    } as any);
+
+    api.registerTool({
+      name: "suite_task_get",
+      description: "Get a task by ID from Startup Suite.",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          task_id: { type: "string", description: "Task ID" },
+        },
+        required: ["task_id"],
+      },
+      execute: async (_id: string, args: any) => suiteToolHelper("task_get", args),
+    } as any);
+
+    api.registerTool({
+      name: "suite_task_list",
+      description: "List tasks in Startup Suite with optional filters.",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          project_id: { type: "string", description: "Filter by project ID" },
+          epic_id: { type: "string", description: "Filter by epic ID" },
+          status: { type: "string", description: "Filter by status" },
+        },
+      },
+      execute: async (_id: string, args: any) => suiteToolHelper("task_list", args),
+    } as any);
+
+    api.registerTool({
+      name: "suite_task_update",
+      description: "Update a task in Startup Suite (title, description, status, priority, epic, assignee).",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          task_id: { type: "string", description: "Task ID (required)" },
+          title: { type: "string", description: "New title" },
+          description: { type: "string", description: "New description" },
+          status: { type: "string", description: "New status" },
+          priority: { type: "string", description: "New priority" },
+          epic_id: { type: "string", description: "Move to different epic" },
+        },
+        required: ["task_id"],
+      },
+      execute: async (_id: string, args: any) => suiteToolHelper("task_update", args),
     } as any);
   },
 };
