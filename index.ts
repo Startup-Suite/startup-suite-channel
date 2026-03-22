@@ -1,5 +1,4 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/core";
-import { onDiagnosticEvent, type DiagnosticUsageEvent } from "openclaw/plugin-sdk/diagnostics-otel";
 import { SuiteClient, type AttentionPayload } from "./src/suite-client.js";
 import { formatContextPreamble } from "./src/message-bridge.js";
 import { readFileSync } from "node:fs";
@@ -179,43 +178,10 @@ const plugin = {
             activeClient.connect();
             ctx.log?.info?.(`startup-suite: connected as runtime ${suiteConfig.runtimeId}`);
 
-            // Forward usage diagnostics from Suite sessions to the analytics API
-            const unsubDiag = onDiagnosticEvent((evt) => {
-              if (evt.type !== "model.usage") return;
-              const usageEvt = evt as DiagnosticUsageEvent;
-              console.log(`[suite-usage] diagnostic event: channel=${usageEvt.channel} sessionKey=${usageEvt.sessionKey} model=${usageEvt.model}`);
-              // Only forward events from startup-suite channel sessions
-              if (!usageEvt.sessionKey?.includes("startup-suite")) return;
-              // Use lastCallUsage (per-request) if available, else cumulative
-              const u = usageEvt.lastCallUsage || usageEvt.usage || {};
-              // Extract space_id from session key (format: startup-suite:default:group:<space_id>)
-              const parts = (usageEvt.sessionKey || "").split(":");
-              const spaceId = parts.length >= 4 ? parts[3] : undefined;
-
-              activeClient?.sendUsageEvent({
-                space_id: spaceId,
-                session_key: usageEvt.sessionKey,
-                model: usageEvt.model,
-                provider: usageEvt.provider,
-                input_tokens: u.input || 0,
-                output_tokens: u.output || 0,
-                cache_read_tokens: u.cacheRead || 0,
-                cache_write_tokens: u.cacheWrite || 0,
-                cost_usd: usageEvt.costUsd || 0,
-                latency_ms: usageEvt.durationMs || 0,
-                metadata: {
-                  session_id: usageEvt.sessionId,
-                  context_limit: usageEvt.context?.limit,
-                  context_used: usageEvt.context?.used,
-                },
-              });
-            });
-
             // Stay alive until abort
             await new Promise<void>((resolve) => {
               if (ctx.abortSignal?.aborted) { resolve(); return; }
               ctx.abortSignal?.addEventListener("abort", () => {
-                unsubDiag();
                 activeClient?.disconnect();
                 activeClient = null;
                 resolve();
@@ -224,6 +190,33 @@ const plugin = {
           },
         },
       },
+    });
+
+    // Forward LLM usage from Suite sessions to the analytics dashboard
+    api.on("llm_output", (event, ctx) => {
+      if (ctx.channelId !== "startup-suite") return;
+      if (!activeClient) return;
+      const u = event.usage || {};
+      // Extract space_id from session key (format: agent:main:startup-suite:group:<space_id>)
+      const parts = (ctx.sessionKey || "").split(":");
+      const spaceId = parts.length >= 5 ? parts[4] : parts.length >= 4 ? parts[3] : undefined;
+
+      activeClient.sendUsageEvent({
+        space_id: spaceId,
+        session_key: ctx.sessionKey,
+        model: event.model,
+        provider: event.provider,
+        input_tokens: u.input || 0,
+        output_tokens: u.output || 0,
+        cache_read_tokens: u.cacheRead || 0,
+        cache_write_tokens: u.cacheWrite || 0,
+        cost_usd: 0,
+        latency_ms: 0,
+        metadata: {
+          session_id: event.sessionId || ctx.sessionId,
+          run_id: event.runId,
+        },
+      });
     });
 
     // Register Suite tools
