@@ -153,6 +153,10 @@ export class SuiteClient {
     this.channel?.push("tool_call", { call_id: callId, tool, args });
   }
 
+  sendUsageEvent(event: Record<string, unknown>): void {
+    this.channel?.push("usage_event", event);
+  }
+
   sendReplyWithMedia(
     spaceId: string,
     content: string,
