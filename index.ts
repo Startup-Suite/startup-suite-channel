@@ -192,11 +192,32 @@ const plugin = {
       },
     });
 
+    // Model pricing table (per 1M tokens)
+    const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+      "claude-sonnet-4-6":  { input: 3.00,  output: 15.00 },
+      "claude-opus-4-6":    { input: 5.00,  output: 25.00 },
+      // Aliases/fallbacks
+      "claude-sonnet-4":    { input: 3.00,  output: 15.00 },
+      "claude-opus-4":      { input: 5.00,  output: 25.00 },
+    };
+
+    function estimateCost(model: string, inputTokens: number, outputTokens: number): number {
+      // Fuzzy match — find the first pricing entry whose key is contained in the model string
+      const key = Object.keys(MODEL_PRICING).find(k => model.includes(k)) || "";
+      const pricing = MODEL_PRICING[key];
+      if (!pricing) return 0;
+      return (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output;
+    }
+
     // Forward LLM usage from Suite sessions to the analytics dashboard
     api.on("llm_output", (event, ctx) => {
-      if (ctx.channelId !== "startup-suite") return;
+      if (!ctx.channelId?.includes("startup-suite") && !ctx.sessionKey?.includes("startup-suite")) return;
       if (!activeClient) return;
       const u = event.usage || {};
+      const inputTokens = u.input || 0;
+      const outputTokens = u.output || 0;
+      const costUsd = estimateCost(event.model || "", inputTokens, outputTokens);
+
       // Extract space_id from session key (format: agent:main:startup-suite:group:<space_id>)
       const parts = (ctx.sessionKey || "").split(":");
       const spaceId = parts.length >= 5 ? parts[4] : parts.length >= 4 ? parts[3] : undefined;
@@ -206,11 +227,11 @@ const plugin = {
         session_key: ctx.sessionKey,
         model: event.model,
         provider: event.provider,
-        input_tokens: u.input || 0,
-        output_tokens: u.output || 0,
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
         cache_read_tokens: u.cacheRead || 0,
         cache_write_tokens: u.cacheWrite || 0,
-        cost_usd: 0,
+        cost_usd: costUsd,
         latency_ms: 0,
         metadata: {
           session_id: event.sessionId || ctx.sessionId,
