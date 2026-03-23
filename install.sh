@@ -9,21 +9,26 @@ OC_CONFIG="$HOME/.openclaw/openclaw.json"
 SUITE_URL=""
 RUNTIME_ID=""
 TOKEN=""
+ACCOUNT_ID=""   # optional named account (for multi-agent setups)
 
 usage() {
   echo "Usage: install.sh [OPTIONS]"
   echo ""
   echo "Options:"
-  echo "  --url URL          Suite WebSocket URL (default: wss://suite.milvenan.technology/runtime/ws)"
-  echo "  --runtime-id ID    Runtime ID from Suite federate flow"
-  echo "  --token TOKEN      Authentication token from Suite federate flow"
-  echo "  -h, --help         Show this help"
+  echo "  --url URL            Suite WebSocket URL (default: wss://suite.milvenan.technology/runtime/ws)"
+  echo "  --runtime-id ID      Runtime ID from Suite federate flow"
+  echo "  --token TOKEN        Authentication token from Suite federate flow"
+  echo "  --account-id NAME    Named account for multi-agent setups (e.g. 'beacon', 'sage')"
+  echo "                       Omit for single-agent installs (uses config.json default)"
+  echo "  -h, --help           Show this help"
   echo ""
-  echo "Interactive mode (no args):"
+  echo "Single-agent (default):"
   echo "  ./install.sh"
-  echo ""
-  echo "Non-interactive mode:"
   echo "  ./install.sh --runtime-id my-runtime --token abc123"
+  echo ""
+  echo "Multi-agent (adds a named account to openclaw.json):"
+  echo "  ./install.sh --account-id beacon --runtime-id beacon-id --token beacon-token"
+  echo "  ./install.sh --account-id sage   --runtime-id sage-id   --token sage-token"
   exit 0
 }
 
@@ -32,6 +37,7 @@ while [[ $# -gt 0 ]]; do
     --url) SUITE_URL="$2"; shift 2 ;;
     --runtime-id) RUNTIME_ID="$2"; shift 2 ;;
     --token) TOKEN="$2"; shift 2 ;;
+    --account-id) ACCOUNT_ID="$2"; shift 2 ;;
     -h|--help) usage ;;
     *) echo "Unknown option: $1"; usage ;;
   esac
@@ -44,6 +50,9 @@ if [ -z "$RUNTIME_ID" ] || [ -z "$TOKEN" ]; then
   echo ""
   echo "You'll need a runtime ID and token from Suite."
   echo "Get these from: Agent Resources → Add Agent → Federate"
+  echo ""
+  echo "For multiple agents on one gateway, run this script once per agent"
+  echo "with --account-id <name> to add named accounts to openclaw.json."
   echo ""
 
   if [ -z "$SUITE_URL" ]; then
@@ -64,6 +73,13 @@ if [ -z "$RUNTIME_ID" ] || [ -z "$TOKEN" ]; then
       echo "Error: Token is required."
       exit 1
     fi
+  fi
+
+  if [ -z "$ACCOUNT_ID" ]; then
+    echo ""
+    echo "Account ID is optional. Leave blank for a single-agent setup."
+    echo "Use a name (e.g. 'beacon') if you're adding a second agent to an existing install."
+    read -rp "Account ID [leave blank for default]: " ACCOUNT_ID
   fi
 
   echo ""
@@ -91,25 +107,16 @@ echo "  ✓ Copied plugin files to $EXT_DIR"
 (cd "$EXT_DIR" && npm install --loglevel=warn)
 echo "  ✓ Installed npm dependencies"
 
-# ── 3. Write config.json with provided values ─────────────────────
-cat > "$EXT_DIR/config.json" <<CONFIGEOF
-{
-  "url": "$SUITE_URL",
-  "runtimeId": "$RUNTIME_ID",
-  "token": "$TOKEN",
-  "autoJoinSpaces": [],
-  "reconnectIntervalMs": 5000,
-  "maxReconnectIntervalMs": 60000
-}
-CONFIGEOF
-echo "  ✓ Wrote config.json with runtime credentials"
+# ── 3. Write config ────────────────────────────────────────────────
+# Single-agent: write config.json (backward compat default account)
+# Multi-agent: write named account into openclaw.json accounts map
 
-# ── 4. Register channel + plugin in openclaw.json ─────────────────
 configure_with_python() {
-  python3 - "$OC_CONFIG" <<'PYEOF'
+  python3 - "$OC_CONFIG" "$SUITE_URL" "$RUNTIME_ID" "$TOKEN" "$ACCOUNT_ID" <<'PYEOF'
 import json, sys
 
-path = sys.argv[1]
+path, url, runtime_id, token, account_id = sys.argv[1:6]
+
 try:
     with open(path) as f:
         cfg = json.load(f)
@@ -118,11 +125,23 @@ except (FileNotFoundError, json.JSONDecodeError):
 
 # Ensure channels.startup-suite
 cfg.setdefault("channels", {})
-cfg["channels"]["startup-suite"] = {
+cfg["channels"].setdefault("startup-suite", {
     "enabled": True,
     "dmPolicy": "allowlist",
     "allowFrom": ["*"]
-}
+})
+
+# Multi-agent: add named account to accounts map
+if account_id:
+    cfg["channels"]["startup-suite"].setdefault("accounts", {})
+    cfg["channels"]["startup-suite"]["accounts"][account_id] = {
+        "url": url,
+        "runtimeId": runtime_id,
+        "token": token,
+        "autoJoinSpaces": [],
+        "reconnectIntervalMs": 5000,
+        "maxReconnectIntervalMs": 60000
+    }
 
 # Ensure plugins.allow includes startup-suite-channel
 cfg.setdefault("plugins", {})
@@ -141,10 +160,28 @@ with open(path, "w") as f:
 PYEOF
 }
 
-configure_with_python
-echo "  ✓ Configured openclaw.json"
+if [ -n "$ACCOUNT_ID" ]; then
+  # Multi-agent: write account into openclaw.json
+  configure_with_python
+  echo "  ✓ Added account '$ACCOUNT_ID' to openclaw.json (channels.startup-suite.accounts.$ACCOUNT_ID)"
+else
+  # Single-agent: write config.json + register channel/plugin in openclaw.json
+  cat > "$EXT_DIR/config.json" <<CONFIGEOF
+{
+  "url": "$SUITE_URL",
+  "runtimeId": "$RUNTIME_ID",
+  "token": "$TOKEN",
+  "autoJoinSpaces": [],
+  "reconnectIntervalMs": 5000,
+  "maxReconnectIntervalMs": 60000
+}
+CONFIGEOF
+  echo "  ✓ Wrote config.json with runtime credentials"
+  configure_with_python
+  echo "  ✓ Configured openclaw.json"
+fi
 
-# ── 5. Test connection (optional) ─────────────────────────────────
+# ── 4. Test connection (optional) ─────────────────────────────────
 echo ""
 read -rp "Test connection now? [Y/n]: " TEST_NOW
 TEST_NOW="${TEST_NOW:-y}"
@@ -163,5 +200,11 @@ fi
 echo ""
 echo "✅ Installation complete!"
 echo ""
+
+if [ -n "$ACCOUNT_ID" ]; then
+  echo "Account '$ACCOUNT_ID' added. Run again with a different --account-id to add more agents."
+  echo ""
+fi
+
 echo "Restart OpenClaw to activate:"
 echo "  openclaw gateway restart"

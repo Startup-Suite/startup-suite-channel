@@ -566,6 +566,148 @@ const plugin = {
       execute: async (_id: string, args: any) =>
         suiteToolHelper("task_update", args),
     } as any);
+
+    // ── Plan management tools ───────────────────────────────────────────
+
+    api.registerTool({
+      name: "suite_plan_create",
+      description:
+        "Create a plan (ordered stages) for a task. Plans must be approved before execution. Version is auto-incremented per task.",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          task_id: { type: "string", description: "Task ID to create the plan for (required)" },
+          stages: {
+            type: "array",
+            description: "Ordered list of stages",
+            items: {
+              type: "object",
+              properties: {
+                name: { type: "string", description: "Stage name" },
+                description: { type: "string", description: "What this stage does" },
+                position: { type: "number", description: "Order position (1-based)" },
+                validations: {
+                  type: "array",
+                  description: "Validation criteria for this stage",
+                  items: {
+                    type: "object",
+                    properties: {
+                      kind: {
+                        type: "string",
+                        description: "ci_check, lint_pass, type_check, test_pass, code_review, manual_approval",
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        required: ["task_id", "stages"],
+      },
+      execute: async (_id: string, args: any) =>
+        suiteToolHelper("plan_create", args),
+    } as any);
+
+    api.registerTool({
+      name: "suite_plan_get",
+      description: "Get the current approved plan for a task, including all stages and their validation status.",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          task_id: { type: "string", description: "Task ID" },
+        },
+        required: ["task_id"],
+      },
+      execute: async (_id: string, args: any) =>
+        suiteToolHelper("plan_get", args),
+    } as any);
+
+    api.registerTool({
+      name: "suite_plan_submit",
+      description:
+        "Submit a draft plan for human review. Plan must be in 'draft' status.",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          plan_id: { type: "string", description: "Plan ID to submit" },
+        },
+        required: ["plan_id"],
+      },
+      execute: async (_id: string, args: any) =>
+        suiteToolHelper("plan_submit", args),
+    } as any);
+
+    // ── Stage management tools ──────────────────────────────────────────
+
+    api.registerTool({
+      name: "suite_stage_start",
+      description:
+        "Start a stage, transitioning it from pending to running. The plan must be approved.",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          stage_id: { type: "string", description: "Stage ID to start" },
+        },
+        required: ["stage_id"],
+      },
+      execute: async (_id: string, args: any) =>
+        suiteToolHelper("stage_start", args),
+    } as any);
+
+    api.registerTool({
+      name: "suite_stage_list",
+      description: "List all stages for a plan, ordered by position.",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          plan_id: { type: "string", description: "Plan ID" },
+        },
+        required: ["plan_id"],
+      },
+      execute: async (_id: string, args: any) =>
+        suiteToolHelper("stage_list", args),
+    } as any);
+
+    // ── Validation tools ────────────────────────────────────────────────
+
+    api.registerTool({
+      name: "suite_validation_evaluate",
+      description:
+        "Submit a pass or fail result for a validation check. Providing evidence (logs, test output, review notes) is strongly recommended. The plan engine auto-advances the stage when all validations on it resolve.",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          validation_id: { type: "string", description: "Validation ID" },
+          status: { type: "string", description: "'passed' or 'failed'" },
+          evidence: {
+            type: "object",
+            description: "Supporting evidence: logs, test output, review notes, CI run URL, etc.",
+          },
+          evaluated_by: {
+            type: "string",
+            description: "Who evaluated this — agent ID, user ID, or 'system'",
+          },
+        },
+        required: ["validation_id", "status"],
+      },
+      execute: async (_id: string, args: any) =>
+        suiteToolHelper("validation_evaluate", args),
+    } as any);
+
+    api.registerTool({
+      name: "suite_validation_list",
+      description: "List all validations for a stage.",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          stage_id: { type: "string", description: "Stage ID" },
+        },
+        required: ["stage_id"],
+      },
+      execute: async (_id: string, args: any) =>
+        suiteToolHelper("validation_list", args),
+    } as any);
   },
 };
 
