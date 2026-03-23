@@ -189,7 +189,7 @@ function estimateCost(model: string, inputTokens: number, outputTokens: number):
 // ── Plugin registration ───────────────────────────────────────────────────
 
 const plugin = {
-  id: "startup-suite-channel",
+  id: "startup-suite-channel-plugin",
   name: "Startup Suite",
   description: "Federated agent runtime via Startup Suite",
 

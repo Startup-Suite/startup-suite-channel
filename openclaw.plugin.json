@@ -1,5 +1,5 @@
 {
-  "id": "startup-suite-channel",
+  "id": "startup-suite-channel-plugin",
   "channels": ["startup-suite"],
   "name": "Startup Suite Channel",
   "description": "Connect to a Startup Suite deployment as a federated agent runtime",
