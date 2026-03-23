@@ -184,7 +184,25 @@ export class SuiteClient {
     this.channel = this.socket.channel(topic, {});
 
     this.channel.on("capabilities", (payload: { tools: any[]; tool_count: number }) => {
-      const registered = ["suite_canvas_create", "suite_canvas_update", "suite_task_create", "suite_task_complete"];
+      const registered = [
+        "suite_canvas_create",
+        "suite_canvas_update",
+        "suite_send_media",
+        "suite_project_list",
+        "suite_epic_list",
+        "suite_task_create",
+        "suite_task_get",
+        "suite_task_list",
+        "suite_task_update",
+        "suite_task_complete",
+        "suite_plan_create",
+        "suite_plan_get",
+        "suite_plan_submit",
+        "suite_stage_start",
+        "suite_stage_list",
+        "suite_validation_evaluate",
+        "suite_validation_list",
+      ];
       const available = (payload.tools || []).map((t: any) => t.name);
       const unregistered = available.filter((t: string) => !registered.includes(`suite_${t}`));
       if (unregistered.length > 0) {

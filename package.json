@@ -1,6 +1,6 @@
 {
   "name": "@startup-suite/startup-suite-channel",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "type": "module",
   "description": "OpenClaw channel plugin for Startup Suite federation",
   "main": "index.ts",

@@ -113,6 +113,145 @@ export const suitePlugin: ChannelPlugin = {
       }),
       execute: suiteToolExecute("task_complete"),
     },
+    {
+      name: "suite_send_media",
+      label: "Send Media to Suite Space",
+      description:
+        "Send a message with file attachments (images, documents) into a Startup Suite space.",
+      parameters: Type.Object({
+        space_id: Type.String({ description: "UUID of the Suite space" }),
+        file_paths: Type.Array(Type.String(), { description: "Local file paths to attach" }),
+        content: Type.Optional(Type.String({ description: "Message text (markdown supported)" })),
+      }),
+      execute: suiteToolExecute("send_media"),
+    },
+    {
+      name: "suite_project_list",
+      label: "List Suite Projects",
+      description: "List all projects in Startup Suite.",
+      parameters: Type.Object({}),
+      execute: suiteToolExecute("project_list"),
+    },
+    {
+      name: "suite_epic_list",
+      label: "List Suite Epics",
+      description: "List epics in Startup Suite, optionally filtered by project.",
+      parameters: Type.Object({
+        project_id: Type.Optional(Type.String({ description: "Filter by project ID" })),
+      }),
+      execute: suiteToolExecute("epic_list"),
+    },
+    {
+      name: "suite_task_get",
+      label: "Get Suite Task",
+      description: "Get a task by ID from Startup Suite.",
+      parameters: Type.Object({
+        task_id: Type.String({ description: "Task ID" }),
+      }),
+      execute: suiteToolExecute("task_get"),
+    },
+    {
+      name: "suite_task_list",
+      label: "List Suite Tasks",
+      description: "List tasks in Startup Suite with optional filters.",
+      parameters: Type.Object({
+        project_id: Type.Optional(Type.String({ description: "Filter by project ID" })),
+        epic_id: Type.Optional(Type.String({ description: "Filter by epic ID" })),
+        status: Type.Optional(Type.String({ description: "Filter by status" })),
+      }),
+      execute: suiteToolExecute("task_list"),
+    },
+    {
+      name: "suite_task_update",
+      label: "Update Suite Task",
+      description: "Update a task in Startup Suite (title, description, status, priority, epic, assignee).",
+      parameters: Type.Object({
+        task_id: Type.String({ description: "Task ID" }),
+        title: Type.Optional(Type.String({ description: "New title" })),
+        description: Type.Optional(Type.String({ description: "New description" })),
+        status: Type.Optional(Type.String({ description: "New status" })),
+        priority: Type.Optional(Type.String({ description: "New priority" })),
+        epic_id: Type.Optional(Type.String({ description: "Move to different epic" })),
+      }),
+      execute: suiteToolExecute("task_update"),
+    },
+    {
+      name: "suite_plan_create",
+      label: "Create Suite Plan",
+      description: "Create a plan (ordered stages) for a task. Plans must be approved before execution.",
+      parameters: Type.Object({
+        task_id: Type.String({ description: "Task ID to create the plan for" }),
+        stages: Type.Array(
+          Type.Object({
+            name: Type.String({ description: "Stage name" }),
+            description: Type.Optional(Type.String({ description: "What this stage does" })),
+            position: Type.Number({ description: "Order position (1-based)" }),
+            validations: Type.Optional(
+              Type.Array(Type.Object({ kind: Type.String() }))
+            ),
+          }),
+          { description: "Ordered list of stages" }
+        ),
+      }),
+      execute: suiteToolExecute("plan_create"),
+    },
+    {
+      name: "suite_plan_get",
+      label: "Get Suite Plan",
+      description: "Get the current approved plan for a task, including all stages and their validation status.",
+      parameters: Type.Object({
+        task_id: Type.String({ description: "Task ID" }),
+      }),
+      execute: suiteToolExecute("plan_get"),
+    },
+    {
+      name: "suite_plan_submit",
+      label: "Submit Suite Plan",
+      description: "Submit a draft plan for human review. Plan must be in 'draft' status.",
+      parameters: Type.Object({
+        plan_id: Type.String({ description: "Plan ID to submit" }),
+      }),
+      execute: suiteToolExecute("plan_submit"),
+    },
+    {
+      name: "suite_stage_start",
+      label: "Start Suite Stage",
+      description: "Start a stage, transitioning it from pending to running. The plan must be approved.",
+      parameters: Type.Object({
+        stage_id: Type.String({ description: "Stage ID to start" }),
+      }),
+      execute: suiteToolExecute("stage_start"),
+    },
+    {
+      name: "suite_stage_list",
+      label: "List Suite Stages",
+      description: "List all stages for a plan, ordered by position.",
+      parameters: Type.Object({
+        plan_id: Type.String({ description: "Plan ID" }),
+      }),
+      execute: suiteToolExecute("stage_list"),
+    },
+    {
+      name: "suite_validation_evaluate",
+      label: "Evaluate Suite Validation",
+      description: "Submit a pass or fail result for a validation check.",
+      parameters: Type.Object({
+        validation_id: Type.String({ description: "Validation ID" }),
+        status: Type.String({ description: "'passed' or 'failed'" }),
+        evaluated_by: Type.Optional(Type.String({ description: "Who evaluated this" })),
+        evidence: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Supporting evidence" })),
+      }),
+      execute: suiteToolExecute("validation_evaluate"),
+    },
+    {
+      name: "suite_validation_list",
+      label: "List Suite Validations",
+      description: "List all validations for a stage.",
+      parameters: Type.Object({
+        stage_id: Type.String({ description: "Stage ID" }),
+      }),
+      execute: suiteToolExecute("validation_list"),
+    },
   ],
 
   outbound: {
