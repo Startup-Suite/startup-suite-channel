@@ -143,16 +143,25 @@ if account_id:
         "maxReconnectIntervalMs": 60000
     }
 
-# Ensure plugins.allow includes startup-suite-channel
+# Ensure plugins.allow includes startup-suite-channel-plugin
 cfg.setdefault("plugins", {})
 allow = cfg["plugins"].setdefault("allow", [])
-if "startup-suite-channel" not in allow:
-    allow.append("startup-suite-channel")
+if "startup-suite-channel-plugin" not in allow:
+    allow.append("startup-suite-channel-plugin")
+# Remove old name if present
+if "startup-suite-channel" in allow:
+    allow.remove("startup-suite-channel")
 
-# Ensure plugins.entries includes startup-suite-channel
-entries = cfg["plugins"].setdefault("entries", [])
-if "startup-suite-channel" not in entries:
-    entries.append("startup-suite-channel")
+# Ensure plugins.entries includes startup-suite-channel-plugin
+entries = cfg["plugins"].setdefault("entries", {})
+if isinstance(entries, list):
+    # Migrate from old list format to dict
+    entries = {}
+    cfg["plugins"]["entries"] = entries
+if "startup-suite-channel-plugin" not in entries:
+    entries["startup-suite-channel-plugin"] = {"enabled": True}
+# Remove old name if present
+entries.pop("startup-suite-channel", None)
 
 with open(path, "w") as f:
     json.dump(cfg, f, indent=2)

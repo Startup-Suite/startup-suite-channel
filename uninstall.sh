@@ -37,12 +37,19 @@ cfg.get("channels", {}).pop("startup-suite", None)
 
 # Remove from plugins.allow
 plugins = cfg.get("plugins", {})
-if "startup-suite-channel" in plugins.get("allow", []):
-    plugins["allow"].remove("startup-suite-channel")
+for name in ["startup-suite-channel-plugin", "startup-suite-channel"]:
+    if name in plugins.get("allow", []):
+        plugins["allow"].remove(name)
 
-# Remove from plugins.entries
-if "startup-suite-channel" in plugins.get("entries", []):
-    plugins["entries"].remove("startup-suite-channel")
+# Remove from plugins.entries (dict or list)
+entries = plugins.get("entries", {})
+if isinstance(entries, dict):
+    entries.pop("startup-suite-channel-plugin", None)
+    entries.pop("startup-suite-channel", None)
+elif isinstance(entries, list):
+    for name in ["startup-suite-channel-plugin", "startup-suite-channel"]:
+        if name in entries:
+            entries.remove(name)
 
 with open(path, "w") as f:
     json.dump(cfg, f, indent=2)
@@ -51,8 +58,8 @@ PYEOF
 }
 
 if command -v openclaw &>/dev/null && remove_with_cli; then
-  openclaw config unset plugins.allow.startup-suite-channel 2>/dev/null || true
-  openclaw config unset plugins.entries.startup-suite-channel 2>/dev/null || true
+  openclaw config unset plugins.allow.startup-suite-channel-plugin 2>/dev/null || true
+  openclaw config unset plugins.entries.startup-suite-channel-plugin 2>/dev/null || true
   echo "  Removed plugin config via CLI"
 else
   remove_with_python
