@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -19,6 +20,26 @@ jobs:
 
       - run: npm install
 
-      - run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # ── Diagnostics ─────────────────────────────
+      - name: Diagnose auth state
+        run: |
+          echo "=== .npmrc contents ==="
+          cat $NPM_CONFIG_USERCONFIG 2>/dev/null || cat ~/.npmrc 2>/dev/null || echo "no .npmrc found"
+          echo ""
+          echo "=== NODE_AUTH_TOKEN set? ==="
+          if [ -z "${NODE_AUTH_TOKEN+x}" ]; then echo "NOT SET"; else echo "SET (length=${#NODE_AUTH_TOKEN})"; fi
+          echo ""
+          echo "=== npm config list ==="
+          npm config list
+          echo ""
+          echo "=== npm whoami ==="
+          npm whoami 2>&1 || true
+          echo ""
+          echo "=== npm publish --dry-run ==="
+          npm publish --access public --provenance --dry-run 2>&1 || true
+          echo ""
+          echo "=== ACTIONS_ID_TOKEN_REQUEST_URL set? ==="
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL+x}" ]; then echo "NOT SET"; else echo "SET"; fi
+
+      - name: Publish
+        run: npm publish --access public --provenance
