@@ -23,6 +23,36 @@ const clients = new Map<string, SuiteClient>();
 // space_id → accountId: populated on first inbound, used for outbound routing
 const spaceToAccountId = new Map<string, string>();
 
+// space_id → inbound timestamp: for latency tracking
+const spaceInboundAt = new Map<string, number>();
+
+// space_id → matched task_id: best task match from attention context
+const spaceTaskId = new Map<string, string | null>();
+
+// ── Task identification ───────────────────────────────────────────────────
+
+/**
+ * Find the best matching task from the attention payload context.
+ * Uses case-insensitive substring match of task title against the message.
+ * Returns the task_id of the shortest matching title (closest match),
+ * or null if no tasks are present or none match.
+ */
+function resolveTaskFromContext(
+  message: string,
+  tasks?: Array<{ id: string; title: string; status: string }>
+): string | null {
+  if (!tasks || tasks.length === 0) return null;
+
+  const msgLower = message.toLowerCase();
+  const matches = tasks.filter((t) => msgLower.includes(t.title.toLowerCase()));
+
+  if (matches.length === 0) return null;
+
+  // Pick shortest title match (most specific)
+  matches.sort((a, b) => a.title.length - b.title.length);
+  return matches[0].id;
+}
+
 let pluginRuntime: any = null;
 let pluginConfig: any = null;
 
@@ -96,6 +126,13 @@ async function handleInbound(payload: AttentionPayload, accountId: string) {
 
   // Track space → account for outbound routing
   spaceToAccountId.set(spaceId, accountId);
+
+  // Track inbound timestamp for latency calculation
+  spaceInboundAt.set(spaceId, Date.now());
+
+  // Identify best matching task from context
+  const matchedTaskId = resolveTaskFromContext(rawBody, payload.context?.tasks);
+  spaceTaskId.set(spaceId, matchedTaskId);
 
   // Build context preamble
   const enrichedContext = {
@@ -316,7 +353,11 @@ const plugin = {
                   clients.delete(accountId);
                   // Clean up space mappings for this account
                   for (const [spaceId, acctId] of spaceToAccountId.entries()) {
-                    if (acctId === accountId) spaceToAccountId.delete(spaceId);
+                    if (acctId === accountId) {
+                      spaceToAccountId.delete(spaceId);
+                      spaceInboundAt.delete(spaceId);
+                      spaceTaskId.delete(spaceId);
+                    }
                   }
                   resolve();
                 },
@@ -353,6 +394,13 @@ const plugin = {
       const outputTokens = u.output || 0;
       const costUsd = estimateCost(event.model || "", inputTokens, outputTokens);
 
+      // Compute latency from when the attention event arrived
+      const inboundAt = spaceId ? spaceInboundAt.get(spaceId) : undefined;
+      const latencyMs = inboundAt ? Date.now() - inboundAt : 0;
+
+      // Resolve associated task from context
+      const taskId = spaceId ? (spaceTaskId.get(spaceId) ?? null) : null;
+
       client.sendUsageEvent({
         space_id: spaceId,
         session_key: ctx.sessionKey,
@@ -363,10 +411,11 @@ const plugin = {
         cache_read_tokens: u.cacheRead || 0,
         cache_write_tokens: u.cacheWrite || 0,
         cost_usd: costUsd,
-        latency_ms: 0,
+        latency_ms: latencyMs,
         metadata: {
           session_id: event.sessionId || ctx.sessionId,
           run_id: event.runId,
+          task_id: taskId,
         },
       });
     });
