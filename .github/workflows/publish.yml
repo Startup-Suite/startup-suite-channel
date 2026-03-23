@@ -15,13 +15,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
       - run: npm install
 
-      - name: Publish to npm (Trusted Publishing)
-        run: |
-          # Remove the token-based auth so npm uses OIDC instead
-          sed -i 's/\/\/registry.npmjs.org\/:_authToken=.*//' "$NPM_CONFIG_USERCONFIG"
-          npm publish --access public --provenance
+      - run: npm publish --access public --provenance
