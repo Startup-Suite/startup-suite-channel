@@ -17,8 +17,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
 
       - run: npm install
 
-      - run: npm publish --access public
+      - name: Publish with Trusted Publishing
+        run: |
+          echo "registry=https://registry.npmjs.org/" > ~/.npmrc
+          npm publish --access public
