@@ -252,6 +252,16 @@ export const suitePlugin: ChannelPlugin = {
       }),
       execute: suiteToolExecute("validation_list"),
     },
+    {
+      name: "suite_space_list",
+      label: "List Suite Spaces",
+      description:
+        "List Suite spaces the agent is a member of. Use to discover space IDs for proactive messaging.",
+      parameters: Type.Object({
+        kind: Type.Optional(Type.String({ description: "Filter by kind: channel or dm" })),
+      }),
+      execute: suiteToolExecute("space_list"),
+    },
   ],
 
   outbound: {

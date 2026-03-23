@@ -14,6 +14,7 @@ export interface SuiteHandlers {
   onAttention: (payload: AttentionPayload) => void;
   onToolResult: (payload: { call_id: string; result: unknown }) => void;
   onDisconnect: () => void;
+  onSpacesManifest?: (spaces: Array<{ id: string; name: string; kind: string }>) => void;
 }
 
 export interface AttentionPayload {
@@ -202,6 +203,7 @@ export class SuiteClient {
         "suite_stage_list",
         "suite_validation_evaluate",
         "suite_validation_list",
+        "suite_space_list",
       ];
       const available = (payload.tools || []).map((t: any) => t.name);
       const unregistered = available.filter((t: string) => !registered.includes(`suite_${t}`));
@@ -236,6 +238,11 @@ export class SuiteClient {
         }
       }
       this.handlers.onToolResult(payload);
+    });
+
+    this.channel.on("spaces_manifest", (payload: { spaces: Array<{ id: string; name: string; kind: string }> }) => {
+      console.log(`[suite-client] spaces_manifest: ${payload.spaces.length} spaces`);
+      this.handlers.onSpacesManifest?.(payload.spaces);
     });
 
     this.channel
