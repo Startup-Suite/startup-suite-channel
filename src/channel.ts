@@ -253,6 +253,24 @@ export const suitePlugin: ChannelPlugin = {
       execute: suiteToolExecute("validation_list"),
     },
     {
+      name: "suite_review_request_create",
+      label: "Create Suite Review Request",
+      description:
+        "Submit evidence for a manual_approval validation gate. Creates a review request with labelled items for human review. Each item is independently approvable. Use this instead of suite_validation_evaluate for manual_approval validations.",
+      parameters: Type.Object({
+        validation_id: Type.String({ description: "The manual_approval validation ID to submit evidence for" }),
+        items: Type.Array(
+          Type.Object({
+            label: Type.String({ description: "Human-readable label for this review item (e.g. 'Desktop view', 'Mobile nav')" }),
+            canvas_id: Type.Optional(Type.String({ description: "Optional canvas ID reference" })),
+            content: Type.Optional(Type.String({ description: "Optional markdown description or text evidence" })),
+          }),
+          { description: "Labelled items for human review. Each is independently approvable." }
+        ),
+      }),
+      execute: suiteToolExecute("review_request_create"),
+    },
+    {
       name: "suite_space_list",
       label: "List Suite Spaces",
       description:
