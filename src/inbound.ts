@@ -20,24 +20,33 @@ export async function handleSuiteInbound(params: {
   const core = getSuiteRuntime();
 
   const rawBody = payload.message?.content?.trim() ?? "";
-  if (!rawBody) return;
+  if (!rawBody) {
+    runtime.warn?.(`[suite-inbound] empty message body, signal=${payload.signal?.reason} task=${payload.signal?.task_id}`);
+    return;
+  }
 
-  const spaceId = payload.signal.space_id || payload.signal.task_id || "unknown";
-  const senderId = payload.message.author;
-  const senderName = payload.message.author;
-  const isGroup = true; // Suite spaces are always group-like
-
-  // Derive task-scoped session key if this is an orchestrated signal
+  // Classify the signal
   const taskId = payload.signal?.task_id;
   const taskStatus = payload.signal?.task_status;
   const signalReason = payload.signal?.reason;
+  const isOrchestrated = !!(
+    taskId &&
+    signalReason &&
+    (signalReason === "task_assigned" || signalReason === "task_heartbeat")
+  );
 
-  function resolveTaskPhase(reason: string, status?: string): string {
-    if (reason === "task_assigned" && status === "planning") return "planning";
-    if (status === "in_progress") return "execution";
-    if (status === "in_review") return "review";
-    return "execution";
-  }
+  // For orchestrated signals, the signal.space_id is the execution space which
+  // isn't in the agent's routing config. Use the execution space for replies but
+  // route via a synthetic peer so the default agent binding resolves correctly.
+  const spaceId = payload.signal.space_id || payload.signal.task_id || "unknown";
+  const senderId = payload.message.author || (isOrchestrated ? "TaskRouter" : "unknown");
+  const senderName = payload.message.author || (isOrchestrated ? "TaskRouter" : "unknown");
+  const isGroup = true;
+
+  runtime.info?.(
+    `[suite-inbound] reason=${signalReason || "chat"} task=${taskId || "none"} ` +
+    `space=${spaceId} orchestrated=${isOrchestrated}`
+  );
 
   // Build the enriched body with Suite context preamble
   const enrichedContext = {
@@ -49,22 +58,37 @@ export async function handleSuiteInbound(params: {
     ? `${preamble}---\n\n**${senderName}**: ${rawBody}`
     : `**${senderName}**: ${rawBody}`;
 
-  // Resolve agent route
+  function resolveTaskPhase(reason: string, status?: string): string {
+    if (reason === "task_assigned" && status === "planning") return "planning";
+    if (status === "in_progress") return "execution";
+    if (status === "in_review") return "review";
+    return "execution";
+  }
+
+  // Resolve agent route.
+  // For orchestrated signals, use "orchestration" as the peer ID so the route
+  // resolver falls through to the default agent binding. Execution space IDs
+  // aren't in the routing config and would cause a mismatch.
+  const routePeerId = isOrchestrated ? "orchestration" : spaceId;
   const route = core.channel.routing.resolveAgentRoute({
     cfg: config,
     channel: CHANNEL_ID,
     accountId: "default",
     peer: {
-      kind: isGroup ? "group" : "direct",
-      id: spaceId,
+      kind: "group",
+      id: routePeerId,
     },
   });
 
   // Override session key for orchestrated task signals — isolates context per task per phase
-  if (taskId && signalReason) {
-    const phase = resolveTaskPhase(signalReason, taskStatus);
+  if (isOrchestrated && taskId) {
+    const phase = resolveTaskPhase(signalReason!, taskStatus);
     route.sessionKey = `startup-suite:task:${taskId}:${phase}`;
   }
+
+  runtime.info?.(
+    `[suite-inbound] resolved route: agent=${route.agentId} session=${route.sessionKey}`
+  );
 
   // Build envelope
   const fromLabel = senderName || `user:${senderId}`;
@@ -105,7 +129,7 @@ export async function handleSuiteInbound(params: {
     Timestamp: Date.now(),
     OriginatingChannel: CHANNEL_ID,
     OriginatingTo: `startup-suite:${spaceId}`,
-    CommandAuthorized: true, // Suite handles its own auth
+    CommandAuthorized: true,
   });
 
   // Dispatch through the full agent pipeline with token-level streaming
@@ -139,7 +163,11 @@ export async function handleSuiteInbound(params: {
     }
   };
 
-  client.sendTyping(spaceId, true);
+  // For orchestrated signals, don't show typing in the execution space
+  // (it's machine-to-machine, no human watching)
+  if (!isOrchestrated) {
+    client.sendTyping(spaceId, true);
+  }
 
   try {
     await dispatchInboundReplyWithBase({
@@ -164,7 +192,6 @@ export async function handleSuiteInbound(params: {
       },
       replyOptions: {
         onPartialReply: (payload) => {
-          // Token-level streaming — called as the model generates text
           const text = payload.text || "";
           if (text && text !== lastChunkText) {
             scheduleFlush(text);
@@ -175,11 +202,17 @@ export async function handleSuiteInbound(params: {
 
     // Signal streaming done so UI clears the streaming bubble
     flushChunk(lastChunkText || "", true);
+  } catch (err: any) {
+    runtime.error?.(
+      `[suite-inbound] dispatch failed: reason=${signalReason} task=${taskId} error=${String(err)}`
+    );
   } finally {
     if (pendingFlush) {
       clearTimeout(pendingFlush);
       pendingFlush = null;
     }
-    client.sendTyping(spaceId, false);
+    if (!isOrchestrated) {
+      client.sendTyping(spaceId, false);
+    }
   }
 }
