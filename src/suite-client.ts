@@ -18,7 +18,7 @@ export interface SuiteHandlers {
 }
 
 export interface AttentionPayload {
-  signal: { reason: string; space_id: string };
+  signal: { reason: string; space_id?: string; task_id?: string; task_status?: string };
   message: { content: string; author: string };
   history: Array<{ content: string; author: string; role?: string }>;
   context: {

@@ -22,10 +22,22 @@ export async function handleSuiteInbound(params: {
   const rawBody = payload.message?.content?.trim() ?? "";
   if (!rawBody) return;
 
-  const spaceId = payload.signal.space_id;
+  const spaceId = payload.signal.space_id || payload.signal.task_id || "unknown";
   const senderId = payload.message.author;
   const senderName = payload.message.author;
   const isGroup = true; // Suite spaces are always group-like
+
+  // Derive task-scoped session key if this is an orchestrated signal
+  const taskId = payload.signal?.task_id;
+  const taskStatus = payload.signal?.task_status;
+  const signalReason = payload.signal?.reason;
+
+  function resolveTaskPhase(reason: string, status?: string): string {
+    if (reason === "task_assigned" && status === "planning") return "planning";
+    if (status === "in_progress") return "execution";
+    if (status === "in_review") return "review";
+    return "execution";
+  }
 
   // Build the enriched body with Suite context preamble
   const enrichedContext = {
@@ -47,6 +59,12 @@ export async function handleSuiteInbound(params: {
       id: spaceId,
     },
   });
+
+  // Override session key for orchestrated task signals — isolates context per task per phase
+  if (taskId && signalReason) {
+    const phase = resolveTaskPhase(signalReason, taskStatus);
+    route.sessionKey = `startup-suite:task:${taskId}:${phase}`;
+  }
 
   // Build envelope
   const fromLabel = senderName || `user:${senderId}`;
