@@ -18,15 +18,52 @@ export interface SuiteHandlers {
 }
 
 export interface AttentionPayload {
-  signal: { reason: string; space_id?: string; task_id?: string; task_status?: string };
+  signal: { reason: string; space_id?: string; task_id?: string; task_status?: string; message_id?: string };
   message: { content: string; author: string };
   history: Array<{ content: string; author: string; role?: string }>;
   context: {
-    space: { id: string; name: string; description?: string };
+    // Chat attention context (from ContextPlane)
+    space?: { id: string; name: string; description?: string };
     canvases?: Array<{ id: string; title: string; content: string }>;
     tasks?: Array<{ id: string; title: string; status: string }>;
     agents?: Array<{ id: string; name: string; status: string }>;
     activity_summary?: string;
+    // Task orchestration context (from ContextAssembler)
+    project?: {
+      name: string;
+      repo_url?: string;
+      tech_stack?: Record<string, unknown>;
+      deploy_config?: Record<string, unknown>;
+    };
+    epic?: {
+      name: string;
+      description?: string;
+      acceptance_criteria?: string;
+    };
+    task?: {
+      id: string;
+      title: string;
+      description?: string;
+      status: string;
+      priority?: string;
+      dependencies?: Array<Record<string, unknown>>;
+      metadata?: Record<string, unknown>;
+    };
+    plan?: {
+      id: string;
+      version: number;
+      status: string;
+      stages: Array<{
+        id: string;
+        position: number;
+        name: string;
+        description?: string;
+        status: string;
+        validations: Array<{ id: string; kind: string; status: string }>;
+      }>;
+    };
+    execution_space_id?: string;
+    skills?: Array<{ name: string; content: string }>;
   };
   tools?: Array<{ name: string; description: string; parameters: object }>;
 }

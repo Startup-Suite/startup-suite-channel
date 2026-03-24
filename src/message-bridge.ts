@@ -3,10 +3,15 @@ import type { AttentionPayload } from "./suite-client.js";
 /**
  * Build a markdown preamble from Suite space context.
  * Used by the inbound handler to enrich the agent envelope body.
+ *
+ * Handles two context shapes:
+ * - Chat attention (ContextPlane): space, canvases, tasks, agents, activity_summary
+ * - Task orchestration (ContextAssembler): project, epic, task, plan, skills
  */
 export function formatContextPreamble(context: AttentionPayload["context"]): string {
   const lines: string[] = [];
 
+  // ── Space context (chat attention) ──────────────────────────────────
   if (context.space) {
     lines.push(`## Space: ${context.space.name}`);
     if (context.space.description) {
@@ -19,6 +24,72 @@ export function formatContextPreamble(context: AttentionPayload["context"]): str
     lines.push("");
   }
 
+  // ── Task orchestration context (ContextAssembler) ───────────────────
+  if (context.project) {
+    lines.push("### Project");
+    lines.push(`- **Name:** ${context.project.name}`);
+    if (context.project.repo_url) {
+      lines.push(`- **Repo:** ${context.project.repo_url}`);
+    }
+    if (context.project.tech_stack && Object.keys(context.project.tech_stack).length > 0) {
+      lines.push(`- **Tech Stack:** ${JSON.stringify(context.project.tech_stack)}`);
+    }
+    lines.push("");
+  }
+
+  if (context.epic) {
+    lines.push("### Epic");
+    lines.push(`- **Name:** ${context.epic.name}`);
+    if (context.epic.description) {
+      lines.push(`- **Description:** ${context.epic.description}`);
+    }
+    if (context.epic.acceptance_criteria) {
+      lines.push(`- **Acceptance Criteria:** ${context.epic.acceptance_criteria}`);
+    }
+    lines.push("");
+  }
+
+  if (context.task) {
+    lines.push("### Task");
+    lines.push(`- **Title:** ${context.task.title}`);
+    lines.push(`- **ID:** ${context.task.id}`);
+    lines.push(`- **Status:** ${context.task.status}`);
+    if (context.task.priority) {
+      lines.push(`- **Priority:** ${context.task.priority}`);
+    }
+    if (context.task.description) {
+      lines.push(`- **Description:** ${context.task.description}`);
+    }
+    if (context.task.dependencies?.length) {
+      lines.push(`- **Dependencies:** ${JSON.stringify(context.task.dependencies)}`);
+    }
+    lines.push("");
+  }
+
+  if (context.plan) {
+    lines.push("### Plan");
+    lines.push(`- **Plan ID:** ${context.plan.id} (v${context.plan.version}, ${context.plan.status})`);
+    if (context.plan.stages?.length) {
+      lines.push("- **Stages:**");
+      for (const stage of context.plan.stages) {
+        const validationSummary = stage.validations?.length
+          ? ` — validations: ${stage.validations.map((v) => `${v.kind}(${v.status})`).join(", ")}`
+          : "";
+        lines.push(`  ${stage.position}. **${stage.name}** [${stage.status}]${stage.description ? `: ${stage.description}` : ""}${validationSummary}`);
+      }
+    }
+    lines.push("");
+  }
+
+  if (context.skills?.length) {
+    lines.push("### Attached Skills");
+    for (const skill of context.skills) {
+      lines.push(`<details><summary>${skill.name}</summary>\n\n${skill.content}\n</details>`);
+    }
+    lines.push("");
+  }
+
+  // ── Chat context items ──────────────────────────────────────────────
   if (context.canvases?.length) {
     lines.push("### Canvases");
     for (const canvas of context.canvases) {
