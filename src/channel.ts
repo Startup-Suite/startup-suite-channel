@@ -280,6 +280,29 @@ export const suitePlugin: ChannelPlugin = {
       }),
       execute: suiteToolExecute("space_list"),
     },
+    {
+      name: "suite_prompt_template_list",
+      label: "List Suite Prompt Templates",
+      description:
+        "List all prompt templates (dispatch and heartbeat prompts) stored in the Suite database. Returns slug, name, description, variables, updated_by, updated_at.",
+      parameters: Type.Object({}),
+      execute: suiteToolExecute("prompt_template_list"),
+    },
+    {
+      name: "suite_prompt_template_update",
+      label: "Update Suite Prompt Template",
+      description:
+        "Update the content of a prompt template by slug. Use {{variable_name}} placeholders for dynamic interpolation. Sets updated_by to \"agent\". Use suite_prompt_template_list to see available slugs and their variables.",
+      parameters: Type.Object({
+        slug: Type.String({
+          description: "Template slug (e.g. dispatch.planning, dispatch.in_progress, dispatch.in_review, dispatch.fallback, heartbeat)",
+        }),
+        content: Type.String({
+          description: "New template content with {{variable_name}} placeholders for interpolation",
+        }),
+      }),
+      execute: suiteToolExecute("prompt_template_update"),
+    },
   ],
 
   outbound: {
