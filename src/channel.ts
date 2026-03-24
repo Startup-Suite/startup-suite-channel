@@ -303,6 +303,14 @@ export const suitePlugin: ChannelPlugin = {
       }),
       execute: suiteToolExecute("prompt_template_update"),
     },
+    {
+      name: "suite_federation_status",
+      label: "Suite Federation Status",
+      description:
+        "Check the connection status of all registered agent runtimes in Startup Suite. Shows which runtimes are online, when they connected, and when they last sent a message. Use to diagnose connectivity issues.",
+      parameters: Type.Object({}),
+      execute: suiteToolExecute("federation_status"),
+    },
   ],
 
   outbound: {
