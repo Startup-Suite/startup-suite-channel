@@ -1,3 +1,4 @@
+// @ts-ignore phoenix ships JS without local type declarations in this plugin checkout
 import { Socket } from "phoenix";
 import WebSocket from "ws";
 
@@ -12,7 +13,7 @@ export interface SuiteConfig {
 
 export interface SuiteHandlers {
   onAttention: (payload: AttentionPayload) => void;
-  onToolResult: (payload: { call_id: string; result: unknown }) => void;
+  onToolResult: (payload: { call_id: string; status?: string; result?: unknown; error?: { error?: string } }) => void;
   onDisconnect: () => void;
   onSpacesManifest?: (spaces: Array<{ id: string; name: string; kind: string }>) => void;
 }
@@ -195,6 +196,10 @@ export class SuiteClient {
     this.channel?.push("usage_event", event);
   }
 
+  sendExecutionEvent(event: Record<string, unknown>): void {
+    this.channel?.push("execution_event", event);
+  }
+
   sendReplyWithMedia(
     spaceId: string,
     content: string,
@@ -239,12 +244,23 @@ export class SuiteClient {
         "suite_stage_start",
         "suite_stage_list",
         "suite_validation_evaluate",
+        "validation_pass",
+        "stage_complete",
+        "report_blocker",
         "suite_validation_list",
+        "review_request_create",
+        "suite_review_request_create",
         "suite_space_list",
+        "prompt_template_list",
+        "suite_prompt_template_list",
+        "prompt_template_update",
+        "suite_prompt_template_update",
         "suite_federation_status",
       ];
       const available = (payload.tools || []).map((t: any) => t.name);
-      const unregistered = available.filter((t: string) => !registered.includes(`suite_${t}`));
+      const unregistered = available.filter(
+        (t: string) => !registered.includes(t) && !registered.includes(`suite_${t}`)
+      );
       if (unregistered.length > 0) {
         console.warn(`[suite-client] Suite advertises tools not registered in plugin: ${unregistered.join(", ")}. Update the plugin to add these.`);
       }

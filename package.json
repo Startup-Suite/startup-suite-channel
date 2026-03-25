@@ -7,11 +7,15 @@
   },
   "type": "module",
   "description": "OpenClaw channel plugin for Startup Suite federation",
-  "main": "index.ts",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
   "openclaw": {
     "extensions": [
-      "./index.ts"
-    ]
+      "./dist/index.js"
+    ],
+    "setupEntry": "./dist/setup-entry.js"
   },
   "dependencies": {
     "@sinclair/typebox": "^0.32.0",
@@ -21,6 +25,8 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@types/ws": "^8.0.0"
+    "@types/ws": "^8.0.0",
+    "typescript": "^5.9.2",
+    "tsx": "^4.20.5"
   }
 }

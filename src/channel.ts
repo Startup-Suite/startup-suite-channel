@@ -1,31 +1,34 @@
 import type { ChannelPlugin } from "openclaw/plugin-sdk/core";
-import { Type } from "@sinclair/typebox";
+import { Type as RawType } from "@sinclair/typebox";
 import { SuiteClient } from "./suite-client.js";
 import { handleSuiteInbound } from "./inbound.js";
-import type { OpenClawConfig } from "./runtime-api.js";
+import {
+  clearClient,
+  clientForSpace,
+  clientForTool,
+  listConfiguredAccountIds,
+  rememberSpaceAccount,
+  resolveAccountConfig,
+  setClient,
+} from "./plugin-state.js";
 
+const Type: any = RawType;
 const CHANNEL_ID = "startup-suite";
-
-let activeClient: SuiteClient | null = null;
-
-export function getActiveClient(): SuiteClient | null {
-  return activeClient;
-}
 
 // ── Suite tool helpers ──────────────────────────────────────────────
 
 function suiteToolExecute(toolName: string) {
-  return async (toolCallId: string, params: Record<string, unknown>) => {
-    const c = activeClient;
-    if (!c) throw new Error("Suite client is not connected");
-
-    // Debug: log the raw args to catch serialization mismatches
+  return async (toolCallId: string, params: unknown) => {
     if (!params || typeof params !== "object" || typeof params === "string") {
       console.error(`[suite-tool] ${toolName}: invalid params type=${typeof params}, toolCallId=${toolCallId}, raw=`, params);
-      throw new Error(`Invalid args for ${toolName}: expected object, got ${typeof params} (${JSON.stringify(params).slice(0, 200)})`);
+      throw new Error(`Invalid args for ${toolName}: expected object, got ${typeof params}`);
     }
 
-    const result = await c.callTool(toolName, params);
+    const typedParams = params as Record<string, unknown>;
+    const c = clientForTool(typedParams);
+    if (!c) throw new Error("Suite client is not connected");
+
+    const result = await c.callTool(toolName, typedParams);
     return { content: [{ type: "text" as const, text: JSON.stringify(result) }], details: result };
   };
 }
@@ -49,14 +52,24 @@ export const suitePlugin: ChannelPlugin = {
   reload: { configPrefixes: [`channels.${CHANNEL_ID}`] },
 
   config: {
-    listAccountIds: () => ["default"],
-    resolveAccount: (_cfg, _accountId) => ({ accountId: "default", enabled: true }),
+    listAccountIds: (cfg) => listConfiguredAccountIds(cfg),
+    resolveAccount: (cfg, accountId) => {
+      const id = String(accountId ?? "default");
+      const suiteConfig = resolveAccountConfig(cfg, id);
+      return {
+        accountId: id,
+        enabled: Boolean(suiteConfig),
+        configured: Boolean(suiteConfig?.url && suiteConfig?.runtimeId && suiteConfig?.token),
+        ...suiteConfig,
+      };
+    },
     defaultAccountId: () => "default",
-    isConfigured: () => true,
-    describeAccount: () => ({
-      accountId: "default",
-      enabled: true,
-      configured: true,
+    isEnabled: (account) => Boolean(account?.enabled ?? true),
+    isConfigured: (account) => Boolean(account?.url && account?.runtimeId && account?.token),
+    describeAccount: (account) => ({
+      accountId: String(account?.accountId ?? "default"),
+      enabled: Boolean(account?.enabled ?? true),
+      configured: Boolean(account?.url && account?.runtimeId && account?.token),
     }),
   },
 
@@ -244,6 +257,41 @@ export const suitePlugin: ChannelPlugin = {
       execute: suiteToolExecute("validation_evaluate"),
     },
     {
+      name: "validation_pass",
+      label: "Pass Validation",
+      description:
+        "Alias for Suite validation pass convenience. Use when prompts refer to validation_pass directly.",
+      parameters: Type.Object({
+        validation_id: Type.String({ description: "Validation ID" }),
+        evidence: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Supporting evidence" })),
+        evaluated_by: Type.Optional(Type.String({ description: "Who evaluated this" })),
+      }),
+      execute: suiteToolExecute("validation_pass"),
+    },
+    {
+      name: "stage_complete",
+      label: "Complete Stage",
+      description:
+        "Alias for Suite stage completion helper. Use when prompts refer to stage_complete directly.",
+      parameters: Type.Object({
+        stage_id: Type.String({ description: "Stage ID to complete" }),
+      }),
+      execute: suiteToolExecute("stage_complete"),
+    },
+    {
+      name: "report_blocker",
+      label: "Report Blocker",
+      description:
+        "Report a structured blocker to Suite when prompts refer to report_blocker directly.",
+      parameters: Type.Object({
+        task_id: Type.String({ description: "Task ID" }),
+        stage_id: Type.String({ description: "Stage ID" }),
+        description: Type.String({ description: "What is blocked and why" }),
+        needs_human: Type.Optional(Type.Boolean({ description: "Whether a human needs to intervene" })),
+      }),
+      execute: suiteToolExecute("report_blocker"),
+    },
+    {
       name: "suite_validation_list",
       label: "List Suite Validations",
       description: "List all validations for a stage.",
@@ -271,6 +319,23 @@ export const suitePlugin: ChannelPlugin = {
       execute: suiteToolExecute("review_request_create"),
     },
     {
+      name: "review_request_create",
+      label: "Create Review Request",
+      description:
+        "Alias for suite_review_request_create. Use when Suite dispatch prompts refer to review_request_create directly.",
+      parameters: Type.Object({
+        validation_id: Type.String({ description: "The manual_approval validation ID to submit evidence for" }),
+        items: Type.Array(
+          Type.Object({
+            label: Type.String({ description: "Human-readable label for this review item" }),
+            canvas_id: Type.Optional(Type.String({ description: "Optional canvas ID reference" })),
+            content: Type.Optional(Type.String({ description: "Optional markdown description or text evidence" })),
+          })
+        ),
+      }),
+      execute: suiteToolExecute("review_request_create"),
+    },
+    {
       name: "suite_space_list",
       label: "List Suite Spaces",
       description:
@@ -285,6 +350,14 @@ export const suitePlugin: ChannelPlugin = {
       label: "List Suite Prompt Templates",
       description:
         "List all prompt templates (dispatch and heartbeat prompts) stored in the Suite database. Returns slug, name, description, variables, updated_by, updated_at.",
+      parameters: Type.Object({}),
+      execute: suiteToolExecute("prompt_template_list"),
+    },
+    {
+      name: "prompt_template_list",
+      label: "List Prompt Templates",
+      description:
+        "Alias for suite_prompt_template_list. Use when Suite dispatch prompts refer to prompt_template_list directly.",
       parameters: Type.Object({}),
       execute: suiteToolExecute("prompt_template_list"),
     },
@@ -304,6 +377,17 @@ export const suitePlugin: ChannelPlugin = {
       execute: suiteToolExecute("prompt_template_update"),
     },
     {
+      name: "prompt_template_update",
+      label: "Update Prompt Template",
+      description:
+        "Alias for suite_prompt_template_update. Use when Suite dispatch prompts refer to prompt_template_update directly.",
+      parameters: Type.Object({
+        slug: Type.String({ description: "Template slug" }),
+        content: Type.String({ description: "New template content" }),
+      }),
+      execute: suiteToolExecute("prompt_template_update"),
+    },
+    {
       name: "suite_federation_status",
       label: "Suite Federation Status",
       description:
@@ -316,64 +400,77 @@ export const suitePlugin: ChannelPlugin = {
   outbound: {
     deliveryMode: "direct",
     async sendText({ to, text }) {
-      const client = activeClient;
-      if (!client) throw new Error("Suite client is not connected");
       if (!to) throw new Error("Missing Startup Suite space id");
-      client.sendReply(to, text);
-      return { ok: true, channel: CHANNEL_ID };
+      const spaceId = to.startsWith(`${CHANNEL_ID}:`) ? to.slice(`${CHANNEL_ID}:`.length) : to;
+      const client = clientForSpace(spaceId);
+      if (!client) throw new Error("Suite client is not connected");
+      client.sendReply(spaceId, text);
+      return { channel: CHANNEL_ID, messageId: `startup-suite:${Date.now()}` };
     },
   },
 
   gateway: {
     async startAccount(ctx) {
-      const { cfg, runtime } = ctx;
-      // Load Suite-specific config from config.json
-      const { readFileSync } = await import("node:fs");
-      const { dirname, join } = await import("node:path");
-      const { fileURLToPath } = await import("node:url");
-      const __dirname = dirname(fileURLToPath(import.meta.url));
-      const raw = readFileSync(join(__dirname, "..", "config.json"), "utf-8");
-      const suiteConfig = JSON.parse(raw);
+      const { cfg, log } = ctx;
+      const accountId = ctx.accountId ?? "default";
+      const runtime = {
+        log: (message: string) => log?.info?.(message),
+        error: (message: string) => log?.error?.(message),
+      };
 
-      activeClient = new SuiteClient(suiteConfig, {
+      runtime.log(`startup-suite(${accountId}): startAccount invoked`);
+      const suiteConfig = resolveAccountConfig(cfg, accountId);
+
+      if (!suiteConfig) {
+        runtime.error(`startup-suite(${accountId}): missing configuration`);
+        throw new Error(`startup-suite: missing configuration for account ${accountId}`);
+      }
+
+      const client = new SuiteClient(suiteConfig, {
         async onAttention(payload) {
           try {
+            const spaceId = payload.signal?.space_id || payload.signal?.task_id;
+            if (spaceId) rememberSpaceAccount(spaceId, accountId);
+
             await handleSuiteInbound({
               payload,
-              config: cfg as OpenClawConfig,
-              runtime,
-              client: activeClient!,
+              config: cfg,
+              runtime: runtime as any,
+              client,
+              accountId,
             });
           } catch (err: any) {
-            runtime.error?.(`startup-suite: attention handler error: ${String(err)}`);
+            runtime.error(`startup-suite: attention handler error: ${String(err)}`);
           }
         },
 
         onToolResult(payload) {
-          runtime.info?.(`startup-suite: tool result: ${payload.call_id}`);
+          runtime.log(`startup-suite: tool result: ${payload.call_id}`);
         },
 
         onDisconnect() {
-          runtime.warn?.(`startup-suite: connection lost, reconnecting...`);
+          runtime.log(`startup-suite(${accountId}): connection lost, reconnecting...`);
         },
       });
 
-      activeClient.connect();
-      runtime.info?.(`startup-suite: connected as runtime ${suiteConfig.runtimeId}`);
+      setClient(accountId, client);
+      client.connect();
+      runtime.log(`startup-suite(${accountId}): connected as runtime ${suiteConfig.runtimeId}`);
 
-      // Keep the account alive until abort signal fires
       await new Promise<void>((resolve) => {
         if (ctx.abortSignal.aborted) {
           resolve();
           return;
         }
-        ctx.abortSignal.addEventListener("abort", () => {
-          if (activeClient) {
-            activeClient.disconnect();
-            activeClient = null;
-          }
-          resolve();
-        }, { once: true });
+        ctx.abortSignal.addEventListener(
+          "abort",
+          () => {
+            client.disconnect();
+            clearClient(accountId);
+            resolve();
+          },
+          { once: true }
+        );
       });
     },
   },

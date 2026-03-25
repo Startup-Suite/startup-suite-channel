@@ -1,10 +1,8 @@
-import {
-  dispatchInboundReplyWithBase,
-  type OpenClawConfig,
-  type RuntimeEnv,
-} from "./runtime-api.js";
+import { type OpenClawConfig, type RuntimeEnv } from "./runtime-api.js";
 import { getSuiteRuntime } from "./runtime.js";
 import { formatContextPreamble } from "./message-bridge.js";
+import { getTaskWorkers, rememberSpaceAccount } from "./plugin-state.js";
+import type { TaskPhase } from "./session-key.js";
 import type { AttentionPayload } from "./suite-client.js";
 import type { SuiteClient } from "./suite-client.js";
 
@@ -15,13 +13,14 @@ export async function handleSuiteInbound(params: {
   config: OpenClawConfig;
   runtime: RuntimeEnv;
   client: SuiteClient;
+  accountId: string;
 }): Promise<void> {
-  const { payload, config, runtime, client } = params;
+  const { payload, config, runtime, client, accountId } = params;
   const core = getSuiteRuntime();
 
   const rawBody = payload.message?.content?.trim() ?? "";
   if (!rawBody) {
-    runtime.warn?.(`[suite-inbound] empty message body, signal=${payload.signal?.reason} task=${payload.signal?.task_id}`);
+    runtime.log(`[suite-inbound] empty message body, signal=${payload.signal?.reason} task=${payload.signal?.task_id}`);
     return;
   }
 
@@ -39,11 +38,12 @@ export async function handleSuiteInbound(params: {
   // isn't in the agent's routing config. Use the execution space for replies but
   // route via a synthetic peer so the default agent binding resolves correctly.
   const spaceId = payload.signal.space_id || payload.signal.task_id || "unknown";
+  rememberSpaceAccount(spaceId, accountId);
   const senderId = payload.message.author || (isOrchestrated ? "TaskRouter" : "unknown");
   const senderName = payload.message.author || (isOrchestrated ? "TaskRouter" : "unknown");
   const isGroup = true;
 
-  runtime.info?.(
+  runtime.log(
     `[suite-inbound] reason=${signalReason || "chat"} task=${taskId || "none"} ` +
     `space=${spaceId} orchestrated=${isOrchestrated}`
   );
@@ -58,9 +58,8 @@ export async function handleSuiteInbound(params: {
     ? `${preamble}---\n\n**${senderName}**: ${rawBody}`
     : `**${senderName}**: ${rawBody}`;
 
-  function resolveTaskPhase(reason: string, status?: string): string {
+  function resolveTaskPhase(reason: string, status?: string): TaskPhase {
     if (reason === "task_assigned" && status === "planning") return "planning";
-    if (status === "in_progress") return "execution";
     if (status === "in_review") return "review";
     return "execution";
   }
@@ -73,20 +72,32 @@ export async function handleSuiteInbound(params: {
   const route = core.channel.routing.resolveAgentRoute({
     cfg: config,
     channel: CHANNEL_ID,
-    accountId: "default",
+    accountId,
     peer: {
       kind: "group",
       id: routePeerId,
     },
   });
 
+  const phase = isOrchestrated && taskId ? resolveTaskPhase(signalReason!, taskStatus) : null;
+
   // Override session key for orchestrated task signals — isolates context per task per phase
-  if (isOrchestrated && taskId) {
-    const phase = resolveTaskPhase(signalReason!, taskStatus);
+  if (phase && taskId) {
     route.sessionKey = `startup-suite:task:${taskId}:${phase}`;
+    const workers = getTaskWorkers();
+    workers.ensureWorker({
+      taskId,
+      phase,
+      executionSpaceId: spaceId,
+      sessionKey: route.sessionKey,
+    });
+
+    if (signalReason === "task_heartbeat") {
+      workers.noteHeartbeat(taskId, phase, "heartbeat acknowledged");
+    }
   }
 
-  runtime.info?.(
+  runtime.log(
     `[suite-inbound] resolved route: agent=${route.agentId} session=${route.sessionKey}`
   );
 
@@ -163,46 +174,78 @@ export async function handleSuiteInbound(params: {
     }
   };
 
-  // For orchestrated signals, don't show typing in the execution space
-  // (it's machine-to-machine, no human watching)
-  if (!isOrchestrated) {
-    client.sendTyping(spaceId, true);
-  }
-
   try {
-    await dispatchInboundReplyWithBase({
-      cfg: config,
-      channel: CHANNEL_ID,
-      accountId: "default",
-      route,
+    await core.channel.session.recordInboundSession({
       storePath,
-      ctxPayload,
-      core,
-      deliver: async (replyPayload) => {
-        const text = replyPayload.text || "";
-        if (!text || !client) return;
-        // Final delivery — send through the normal path (persisted message)
-        client.sendReply(spaceId, text);
+      sessionKey: route.sessionKey,
+      ctx: ctxPayload,
+      createIfMissing: true,
+      updateLastRoute: {
+        sessionKey: route.sessionKey,
+        channel: CHANNEL_ID,
+        to: `startup-suite:${spaceId}`,
+        accountId,
       },
-      onRecordError: (err) => {
-        runtime.error?.(`startup-suite: session meta error: ${String(err)}`);
+      onRecordError: (err: unknown) => {
+        runtime.error(`startup-suite: session meta error: ${String(err)}`);
       },
-      onDispatchError: (err, info) => {
-        runtime.error?.(`startup-suite ${info.kind} reply failed: ${String(err)}`);
-      },
+    });
+
+    const { dispatcher, replyOptions: dispatcherReplyOptions, markDispatchIdle, markRunComplete } =
+      core.channel.reply.createReplyDispatcherWithTyping({
+        deliver: async (replyPayload: any, info: { kind: string }) => {
+          const text = replyPayload?.text || "";
+          if (!text || !client) return;
+
+          if (info.kind !== "tool") {
+            client.sendReply(spaceId, text);
+          }
+
+          if (phase && taskId && info.kind === "final") {
+            getTaskWorkers().noteFinished(taskId, phase, "final reply delivered");
+          }
+        },
+        typingCallbacks: undefined,
+        onError: (err: unknown, info: { kind: string }) => {
+          runtime.error(`startup-suite ${info.kind} reply failed: ${String(err)}`);
+        },
+        onCleanup: () => {
+          if (!isOrchestrated) {
+            client.sendTyping(spaceId, false);
+          }
+        },
+      });
+
+    await core.channel.reply.dispatchReplyFromConfig({
+      ctx: ctxPayload,
+      cfg: config,
+      dispatcher,
       replyOptions: {
-        onPartialReply: (payload) => {
+        ...dispatcherReplyOptions,
+        onPartialReply: (payload: any) => {
           const text = payload.text || "";
           if (text && text !== lastChunkText) {
             scheduleFlush(text);
+            if (phase && taskId) {
+              getTaskWorkers().noteProgress(taskId, phase, "streaming reply chunk");
+            }
           }
         },
       },
     });
 
+    markRunComplete();
+    dispatcher.markComplete();
+    await dispatcher.waitForIdle();
+    markDispatchIdle();
+
     // Signal streaming done so UI clears the streaming bubble
     flushChunk(lastChunkText || "", true);
   } catch (err: any) {
+    if (phase && taskId) {
+      getTaskWorkers().noteFailure(taskId, phase, String(err));
+    }
+
     runtime.error?.(
       `[suite-inbound] dispatch failed: reason=${signalReason} task=${taskId} error=${String(err)}`
     );
