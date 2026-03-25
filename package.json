@@ -9,7 +9,8 @@
   "description": "OpenClaw channel plugin for Startup Suite federation",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "test:tool-contract": "node scripts/check-tool-contract.mjs"
   },
   "openclaw": {
     "extensions": [
