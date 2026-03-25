@@ -177,12 +177,18 @@ export const suitePlugin: ChannelPlugin = {
     {
       name: "suite_task_update",
       label: "Update Suite Task",
-      description: "Update a task in Startup Suite (title, description, status, priority, epic, assignee).",
+      description:
+        "Update a task's metadata (title, description, priority, epic). Do NOT use this to change task status during normal lifecycle execution — lifecycle status transitions (in_progress → in_review → done) are driven automatically by the plan engine when validations resolve. Only use the status field for exceptional out-of-band corrections.",
       parameters: Type.Object({
         task_id: Type.String({ description: "Task ID" }),
         title: Type.Optional(Type.String({ description: "New title" })),
         description: Type.Optional(Type.String({ description: "New description" })),
-        status: Type.Optional(Type.String({ description: "New status" })),
+        status: Type.Optional(
+          Type.String({
+            description:
+              "New status — for exceptional corrections only. Normal lifecycle transitions are driven by the plan engine.",
+          })
+        ),
         priority: Type.Optional(Type.String({ description: "New priority" })),
         epic_id: Type.Optional(Type.String({ description: "Move to different epic" })),
       }),
