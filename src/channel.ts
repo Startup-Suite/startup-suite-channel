@@ -196,6 +196,8 @@ export const suitePlugin: ChannelPlugin = {
         ),
         priority: Type.Optional(Type.String({ description: "New priority" })),
         epic_id: Type.Optional(Type.String({ description: "Move to different epic" })),
+        assignee_type: Type.Optional(Type.String({ description: "Assignee type: user or agent" })),
+        assignee_id: Type.Optional(Type.String({ description: "ID of the user or agent to assign" })),
       }),
       execute: suiteToolExecute("task_update"),
     },
