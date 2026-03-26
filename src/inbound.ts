@@ -61,6 +61,7 @@ export async function handleSuiteInbound(params: {
   function resolveTaskPhase(reason: string, status?: string): TaskPhase {
     if (reason === "task_assigned" && status === "planning") return "planning";
     if (status === "in_review") return "review";
+    if (status === "deploying") return "deploying";
     return "execution";
   }
 
