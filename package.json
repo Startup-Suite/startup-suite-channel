@@ -1,6 +1,6 @@
 {
   "name": "startup-suite-channel-plugin",
-  "version": "0.3.12",
+  "version": "0.3.13",
   "repository": {
     "type": "git",
     "url": "https://github.com/Startup-Suite/startup-suite-channel.git"
