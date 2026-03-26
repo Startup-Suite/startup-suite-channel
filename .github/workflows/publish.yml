@@ -23,6 +23,14 @@ jobs:
 
       - run: npm install
 
+      - name: Build plugin bundle
+        run: npm run build
+
+      - name: Verify packaged entrypoints exist
+        run: |
+          test -f dist/index.js
+          test -f dist/setup-entry.js
+
       - name: Publish with Trusted Publishing
         run: |
           echo "registry=https://registry.npmjs.org/" > ~/.npmrc
