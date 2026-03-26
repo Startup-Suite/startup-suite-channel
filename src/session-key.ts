@@ -1,5 +1,10 @@
 export type TaskPhase = "planning" | "execution" | "review";
 
+export function buildTaskSessionKey(taskId: string, phase: TaskPhase, attempt?: string | number) {
+  const base = `startup-suite:task:${taskId}:${phase}`;
+  return attempt == null ? base : `${base}:attempt:${attempt}`;
+}
+
 export function parseTaskSessionKey(sessionKey?: string | null):
   | { taskId: string; phase: TaskPhase }
   | null {
@@ -8,11 +13,8 @@ export function parseTaskSessionKey(sessionKey?: string | null):
   if (!sessionKey.startsWith(prefix)) return null;
 
   const rest = sessionKey.slice(prefix.length);
-  const lastColon = rest.lastIndexOf(":");
-  if (lastColon <= 0) return null;
+  const match = rest.match(/^([^:]+):(planning|execution|review)(?::.*)?$/);
+  if (!match) return null;
 
-  const taskId = rest.slice(0, lastColon);
-  const phase = rest.slice(lastColon + 1) as TaskPhase;
-  if (!taskId || !["planning", "execution", "review"].includes(phase)) return null;
-  return { taskId, phase };
+  return { taskId: match[1]!, phase: match[2] as TaskPhase };
 }

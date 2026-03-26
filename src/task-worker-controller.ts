@@ -8,6 +8,10 @@ interface TaskWorkerRecord {
   executionSpaceId: string;
   sessionKey: string;
   runtimeWorkerRef: string;
+  sessionId?: string;
+  runId?: string;
+  assignmentAcceptedSent: boolean;
+  executionStartedSent: boolean;
   status: "active" | "blocked" | "finished" | "failed" | "abandoned";
   createdAt: number;
   lastObservedAt: number;
@@ -31,6 +35,7 @@ interface RuntimeEventPayload {
   executionSpaceId?: string;
   runtimeWorkerRef?: string;
   payload?: Record<string, unknown>;
+  idempotencyKey?: string;
 }
 
 export class TaskWorkerController {
@@ -66,6 +71,8 @@ export class TaskWorkerController {
         executionSpaceId: params.executionSpaceId,
         sessionKey: params.sessionKey,
         runtimeWorkerRef: params.sessionKey,
+        assignmentAcceptedSent: false,
+        executionStartedSent: false,
         status: "active",
         createdAt: now,
         lastObservedAt: now,
@@ -73,65 +80,181 @@ export class TaskWorkerController {
         lastProgressSentAt: 0,
       };
       this.workers.set(key, worker);
-      this.publish({
-        taskId: worker.taskId,
-        phase: worker.phase,
-        eventType: "assignment.accepted",
-        executionSpaceId: worker.executionSpaceId,
-        runtimeWorkerRef: worker.runtimeWorkerRef,
-      });
-      this.publish({
-        taskId: worker.taskId,
-        phase: worker.phase,
-        eventType: "execution.started",
-        executionSpaceId: worker.executionSpaceId,
-        runtimeWorkerRef: worker.runtimeWorkerRef,
-      });
-      worker.lastHeartbeatSentAt = now;
-      this.startHeartbeat(worker);
       return worker;
     }
 
+    const shouldFreshenSession = ["blocked", "failed", "finished", "abandoned"].includes(worker.status);
+
+    if (shouldFreshenSession) {
+      this.stopHeartbeat(worker);
+      worker.sessionKey = `${params.sessionKey}:attempt:${now}`;
+      worker.runtimeWorkerRef = worker.sessionKey;
+      worker.sessionId = undefined;
+      worker.runId = undefined;
+      worker.assignmentAcceptedSent = false;
+      worker.executionStartedSent = false;
+      worker.createdAt = now;
+      worker.lastHeartbeatSentAt = 0;
+      worker.lastProgressSentAt = 0;
+    } else if (!worker.sessionKey) {
+      worker.sessionKey = params.sessionKey;
+      if (!worker.sessionId) {
+        worker.runtimeWorkerRef = params.sessionKey;
+      }
+    }
+
     worker.executionSpaceId = params.executionSpaceId;
-    worker.sessionKey = params.sessionKey;
-    worker.runtimeWorkerRef = params.sessionKey;
     worker.status = "active";
     worker.lastObservedAt = now;
-    if (!worker.heartbeatTimer) this.startHeartbeat(worker);
     return worker;
   }
 
-  noteProgress(taskId: string, phase: TaskPhase, summary?: string) {
+  forceFreshSession(taskId: string, phase: TaskPhase, sessionKey: string) {
+    const worker = this.workers.get(this.workerKey(taskId, phase));
+    if (!worker) return null;
+    const now = Date.now();
+    this.stopHeartbeat(worker);
+    worker.sessionKey = sessionKey;
+    worker.runtimeWorkerRef = sessionKey;
+    worker.sessionId = undefined;
+    worker.runId = undefined;
+    worker.assignmentAcceptedSent = false;
+    worker.executionStartedSent = false;
+    worker.status = "active";
+    worker.createdAt = now;
+    worker.lastObservedAt = now;
+    worker.lastHeartbeatSentAt = 0;
+    worker.lastProgressSentAt = 0;
+    return worker;
+  }
+
+  noteSessionStarted(
+    taskId: string,
+    phase: TaskPhase,
+    details: { sessionId?: string; runId?: string; sessionKey?: string }
+  ) {
     const worker = this.workers.get(this.workerKey(taskId, phase));
     if (!worker) return;
     const now = Date.now();
+    if (!this.observeRuntime(worker, details)) return;
     worker.lastObservedAt = now;
+
+    if (!worker.assignmentAcceptedSent) {
+      worker.assignmentAcceptedSent = true;
+      this.publish({
+        taskId,
+        phase,
+        eventType: "assignment.accepted",
+        executionSpaceId: worker.executionSpaceId,
+        runtimeWorkerRef: worker.runtimeWorkerRef,
+        idempotencyKey: `${taskId}:${phase}:assignment.accepted:${worker.runtimeWorkerRef}`,
+        payload: this.runtimeIdentityPayload(worker),
+      });
+    }
+  }
+
+  notePromptDelivered(
+    taskId: string,
+    phase: TaskPhase,
+    details: { sessionId?: string; runId?: string; sessionKey?: string; summary?: string }
+  ) {
+    const worker = this.workers.get(this.workerKey(taskId, phase));
+    if (!worker) return;
+    const now = Date.now();
+    if (!this.observeRuntime(worker, details)) return;
+    worker.lastObservedAt = now;
+
+    if (!worker.assignmentAcceptedSent) {
+      this.noteSessionStarted(taskId, phase, details);
+    }
+
+    if (!worker.executionStartedSent) {
+      worker.executionStartedSent = true;
+      this.publish({
+        taskId,
+        phase,
+        eventType: "execution.started",
+        executionSpaceId: worker.executionSpaceId,
+        runtimeWorkerRef: worker.runtimeWorkerRef,
+        idempotencyKey: `${taskId}:${phase}:execution.started:${worker.runId ?? worker.runtimeWorkerRef}`,
+        payload: {
+          ...this.runtimeIdentityPayload(worker),
+          ...(details.summary ? { summary: details.summary } : {}),
+        },
+      });
+    }
+
+    if (!worker.heartbeatTimer) {
+      worker.lastHeartbeatSentAt = now;
+      this.startHeartbeat(worker);
+    }
+  }
+
+  noteProgress(
+    taskId: string,
+    phase: TaskPhase,
+    summary?: string,
+    details?: { sessionId?: string; runId?: string; sessionKey?: string; idempotencyKey?: string }
+  ) {
+    const worker = this.workers.get(this.workerKey(taskId, phase));
+    if (!worker) return;
+    const now = Date.now();
+    if (!this.observeRuntime(worker, details ?? {})) return;
+    worker.lastObservedAt = now;
+    if (!worker.executionStartedSent) {
+      this.notePromptDelivered(taskId, phase, {
+        ...details,
+        summary: summary ?? "runtime activity observed",
+      });
+    }
     if (now - worker.lastProgressSentAt < this.progressThrottleMs) return;
     worker.lastProgressSentAt = now;
     worker.lastHeartbeatSentAt = now;
+    if (!worker.heartbeatTimer) this.startHeartbeat(worker);
     this.publish({
       taskId,
       phase,
       eventType: "execution.progress",
       executionSpaceId: worker.executionSpaceId,
       runtimeWorkerRef: worker.runtimeWorkerRef,
-      payload: summary ? { summary } : undefined,
+      idempotencyKey:
+        details?.idempotencyKey ??
+        `${taskId}:${phase}:execution.progress:${worker.runId ?? worker.runtimeWorkerRef}:${Math.floor(now / this.progressThrottleMs)}`,
+      payload: {
+        ...this.runtimeIdentityPayload(worker),
+        ...(summary ? { summary } : {}),
+      },
     });
   }
 
-  noteHeartbeat(taskId: string, phase: TaskPhase, summary?: string) {
+  noteHeartbeat(
+    taskId: string,
+    phase: TaskPhase,
+    summary?: string,
+    details?: { sessionId?: string; runId?: string; sessionKey?: string }
+  ) {
     const worker = this.workers.get(this.workerKey(taskId, phase));
     if (!worker) return;
     const now = Date.now();
+    if (!this.observeRuntime(worker, details ?? {})) return;
     worker.lastObservedAt = now;
     worker.lastHeartbeatSentAt = now;
+    if (!worker.executionStartedSent) {
+      this.notePromptDelivered(taskId, phase, {
+        ...details,
+        summary: summary ?? "heartbeat acknowledged",
+      });
+    }
+    if (!worker.heartbeatTimer) this.startHeartbeat(worker);
     this.publish({
       taskId,
       phase,
       eventType: "execution.heartbeat",
       executionSpaceId: worker.executionSpaceId,
       runtimeWorkerRef: worker.runtimeWorkerRef,
+      idempotencyKey: `${taskId}:${phase}:execution.heartbeat:${worker.runId ?? worker.runtimeWorkerRef}:${Math.floor(now / this.heartbeatIntervalMs)}`,
       payload: {
+        ...this.runtimeIdentityPayload(worker),
         ...(summary ? { summary } : {}),
         last_local_activity_at: new Date(worker.lastObservedAt).toISOString(),
         status: worker.status,
@@ -139,9 +262,15 @@ export class TaskWorkerController {
     });
   }
 
-  noteFailure(taskId: string, phase: TaskPhase, error: string) {
+  noteFailure(
+    taskId: string,
+    phase: TaskPhase,
+    error: string,
+    details?: { sessionId?: string; runId?: string; sessionKey?: string; idempotencyKey?: string }
+  ) {
     const worker = this.workers.get(this.workerKey(taskId, phase));
     if (!worker) return;
+    if (!this.observeRuntime(worker, details ?? {})) return;
     worker.status = "failed";
     worker.lastObservedAt = Date.now();
     this.publish({
@@ -150,14 +279,25 @@ export class TaskWorkerController {
       eventType: "execution.failed",
       executionSpaceId: worker.executionSpaceId,
       runtimeWorkerRef: worker.runtimeWorkerRef,
-      payload: { error },
+      idempotencyKey:
+        details?.idempotencyKey ?? `${taskId}:${phase}:execution.failed:${worker.runId ?? worker.runtimeWorkerRef}`,
+      payload: {
+        ...this.runtimeIdentityPayload(worker),
+        error,
+      },
     });
     this.stopHeartbeat(worker);
   }
 
-  noteBlocked(taskId: string, phase: TaskPhase, description: string) {
+  noteBlocked(
+    taskId: string,
+    phase: TaskPhase,
+    description: string,
+    details?: { sessionId?: string; runId?: string; sessionKey?: string; idempotencyKey?: string }
+  ) {
     const worker = this.workers.get(this.workerKey(taskId, phase));
     if (!worker) return;
+    if (!this.observeRuntime(worker, details ?? {})) return;
     worker.status = "blocked";
     worker.lastObservedAt = Date.now();
     this.publish({
@@ -166,13 +306,24 @@ export class TaskWorkerController {
       eventType: "execution.blocked",
       executionSpaceId: worker.executionSpaceId,
       runtimeWorkerRef: worker.runtimeWorkerRef,
-      payload: { description },
+      idempotencyKey:
+        details?.idempotencyKey ?? `${taskId}:${phase}:execution.blocked:${worker.runId ?? worker.runtimeWorkerRef}`,
+      payload: {
+        ...this.runtimeIdentityPayload(worker),
+        description,
+      },
     });
   }
 
-  noteFinished(taskId: string, phase: TaskPhase, summary?: string) {
+  noteFinished(
+    taskId: string,
+    phase: TaskPhase,
+    summary?: string,
+    details?: { sessionId?: string; runId?: string; sessionKey?: string; idempotencyKey?: string }
+  ) {
     const worker = this.workers.get(this.workerKey(taskId, phase));
     if (!worker) return;
+    if (!this.observeRuntime(worker, details ?? {})) return;
     worker.status = "finished";
     worker.lastObservedAt = Date.now();
     this.publish({
@@ -181,14 +332,25 @@ export class TaskWorkerController {
       eventType: "execution.finished",
       executionSpaceId: worker.executionSpaceId,
       runtimeWorkerRef: worker.runtimeWorkerRef,
-      payload: summary ? { summary } : undefined,
+      idempotencyKey:
+        details?.idempotencyKey ?? `${taskId}:${phase}:execution.finished:${worker.runId ?? worker.runtimeWorkerRef}`,
+      payload: {
+        ...this.runtimeIdentityPayload(worker),
+        ...(summary ? { summary } : {}),
+      },
     });
     this.stopHeartbeat(worker);
   }
 
-  noteAbandoned(taskId: string, phase: TaskPhase, reason?: string) {
+  noteAbandoned(
+    taskId: string,
+    phase: TaskPhase,
+    reason?: string,
+    details?: { sessionId?: string; runId?: string; sessionKey?: string; idempotencyKey?: string }
+  ) {
     const worker = this.workers.get(this.workerKey(taskId, phase));
     if (!worker) return;
+    if (!this.observeRuntime(worker, details ?? {})) return;
     worker.status = "abandoned";
     worker.lastObservedAt = Date.now();
     this.publish({
@@ -197,7 +359,12 @@ export class TaskWorkerController {
       eventType: "execution.abandoned",
       executionSpaceId: worker.executionSpaceId,
       runtimeWorkerRef: worker.runtimeWorkerRef,
-      payload: reason ? { reason } : undefined,
+      idempotencyKey:
+        details?.idempotencyKey ?? `${taskId}:${phase}:execution.abandoned:${worker.runId ?? worker.runtimeWorkerRef}`,
+      payload: {
+        ...this.runtimeIdentityPayload(worker),
+        ...(reason ? { reason } : {}),
+      },
     });
     this.stopHeartbeat(worker);
   }
@@ -240,7 +407,9 @@ export class TaskWorkerController {
         eventType: "execution.heartbeat",
         executionSpaceId: worker.executionSpaceId,
         runtimeWorkerRef: worker.runtimeWorkerRef,
+        idempotencyKey: `${worker.taskId}:${worker.phase}:execution.heartbeat:${worker.runId ?? worker.runtimeWorkerRef}:${Math.floor(now / this.heartbeatIntervalMs)}`,
         payload: {
+          ...this.runtimeIdentityPayload(worker),
           last_local_activity_at: new Date(worker.lastObservedAt).toISOString(),
           status: worker.status,
         },
@@ -268,10 +437,61 @@ export class TaskWorkerController {
         eventType: "execution.finished",
         executionSpaceId: worker.executionSpaceId,
         runtimeWorkerRef: worker.runtimeWorkerRef,
-        payload: { summary: `phase advanced to ${activePhase}` },
+        idempotencyKey: `${worker.taskId}:${worker.phase}:execution.finished:${worker.runId ?? worker.runtimeWorkerRef}:phase-advanced-${activePhase}`,
+        payload: {
+          ...this.runtimeIdentityPayload(worker),
+          summary: `phase advanced to ${activePhase}`,
+        },
       });
       this.stopHeartbeat(worker);
     }
+  }
+
+  private observeRuntime(
+    worker: TaskWorkerRecord,
+    details: { sessionId?: string; runId?: string; sessionKey?: string }
+  ): boolean {
+    if (this.isSupersededRuntime(worker, details)) {
+      return false;
+    }
+    if (details.sessionKey) {
+      worker.sessionKey = details.sessionKey;
+    }
+    if (details.sessionId) {
+      worker.sessionId = details.sessionId;
+      worker.runtimeWorkerRef = details.sessionId;
+    }
+    if (details.runId) {
+      worker.runId = details.runId;
+    }
+    return true;
+  }
+
+  private isSupersededRuntime(
+    worker: TaskWorkerRecord,
+    details: { sessionId?: string; runId?: string; sessionKey?: string }
+  ) {
+    if (details.sessionId && worker.sessionId && details.sessionId !== worker.sessionId) {
+      return true;
+    }
+
+    if (details.sessionKey && worker.sessionKey && details.sessionKey !== worker.sessionKey) {
+      return true;
+    }
+
+    if (details.runId && worker.runId && details.runId !== worker.runId) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private runtimeIdentityPayload(worker: TaskWorkerRecord): Record<string, unknown> {
+    return {
+      ...(worker.sessionKey ? { session_key: worker.sessionKey } : {}),
+      ...(worker.sessionId ? { session_id: worker.sessionId } : {}),
+      ...(worker.runId ? { run_id: worker.runId } : {}),
+    };
   }
 
   private publish(event: RuntimeEventPayload) {
@@ -285,7 +505,7 @@ export class TaskWorkerController {
       execution_space_id: event.executionSpaceId,
       runtime_worker_ref: event.runtimeWorkerRef,
       occurred_at: new Date().toISOString(),
-      idempotency_key: this.idempotencyKey(event),
+      idempotency_key: event.idempotencyKey ?? this.idempotencyKey(event),
       payload: event.payload ?? {},
     });
   }
@@ -296,8 +516,6 @@ export class TaskWorkerController {
       event.phase,
       event.eventType,
       event.runtimeWorkerRef ?? "worker",
-      Date.now().toString(36),
-      Math.random().toString(36).slice(2, 8),
     ].join(":");
   }
 

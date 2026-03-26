@@ -2,7 +2,7 @@ import { type OpenClawConfig, type RuntimeEnv } from "./runtime-api.js";
 import { getSuiteRuntime } from "./runtime.js";
 import { formatContextPreamble } from "./message-bridge.js";
 import { getTaskWorkers, rememberSpaceAccount } from "./plugin-state.js";
-import type { TaskPhase } from "./session-key.js";
+import { buildTaskSessionKey, type TaskPhase } from "./session-key.js";
 import type { AttentionPayload } from "./suite-client.js";
 import type { SuiteClient } from "./suite-client.js";
 
@@ -81,19 +81,36 @@ export async function handleSuiteInbound(params: {
 
   const phase = isOrchestrated && taskId ? resolveTaskPhase(signalReason!, taskStatus) : null;
 
-  // Override session key for orchestrated task signals — isolates context per task per phase
+  // Override session key for orchestrated task signals — isolates context per task per phase.
+  // If a prior run for the same task/phase blocked or failed, ensureWorker may freshen
+  // the session key so retries get a clean agent context instead of reusing poisoned state.
   if (phase && taskId) {
-    route.sessionKey = `startup-suite:task:${taskId}:${phase}`;
     const workers = getTaskWorkers();
-    workers.ensureWorker({
+    const sessionKey =
+      phase === "review"
+        ? buildTaskSessionKey(taskId, phase, Date.now())
+        : buildTaskSessionKey(taskId, phase);
+
+    let worker = workers.ensureWorker({
       taskId,
       phase,
       executionSpaceId: spaceId,
-      sessionKey: route.sessionKey,
+      sessionKey,
     });
 
+    if (phase === "review" && signalReason === "task_assigned") {
+      worker = workers.forceFreshSession(taskId, phase, sessionKey) ?? worker;
+    }
+
+    route.sessionKey = worker.sessionKey;
+    runtime.log(
+      `[suite-inbound] task-route override: task=${taskId} phase=${phase} requested=${sessionKey} worker=${worker.sessionKey}`
+    );
+
     if (signalReason === "task_heartbeat") {
-      workers.noteHeartbeat(taskId, phase, "heartbeat acknowledged");
+      workers.noteHeartbeat(taskId, phase, "heartbeat acknowledged", {
+        sessionKey: route.sessionKey,
+      });
     }
   }
 
@@ -201,9 +218,9 @@ export async function handleSuiteInbound(params: {
             client.sendReply(spaceId, text);
           }
 
-          if (phase && taskId && info.kind === "final") {
-            getTaskWorkers().noteFinished(taskId, phase, "final reply delivered");
-          }
+          // Task-phase completion is now driven by real lifecycle/tool events
+          // (session_start / llm_input / after_tool_call / agent_end), not by the
+          // presence of a final reply string.
         },
         typingCallbacks: undefined,
         onError: (err: unknown, info: { kind: string }) => {
