@@ -245,12 +245,18 @@ export async function handleSuiteInbound(params: {
           if (text && text !== lastChunkText) {
             scheduleFlush(text);
             if (phase && taskId) {
-              getTaskWorkers().noteProgress(taskId, phase, "streaming reply chunk");
+              const excerpt = text.length > 200 ? text.slice(0, 200) + "…" : text;
+              getTaskWorkers().noteProgress(taskId, phase, `streaming: ${excerpt}`);
             }
           }
         },
       },
     });
+
+    if (phase && taskId && lastChunkText) {
+      const finalExcerpt = lastChunkText.length > 500 ? lastChunkText.slice(0, 500) + "…" : lastChunkText;
+      getTaskWorkers().noteProgress(taskId, phase, `agent replied: ${finalExcerpt}`);
+    }
 
     markRunComplete();
     dispatcher.markComplete();
