@@ -24,23 +24,25 @@ export async function handleSuiteInbound(params: {
     return;
   }
 
-  // Classify the signal
+  // Classify the signal. Any attention payload carrying a task_id is treated as
+  // task-scoped orchestration, including human steering messages posted into an
+  // execution space.
   const taskId = payload.signal?.task_id;
   const taskStatus = payload.signal?.task_status;
   const signalReason = payload.signal?.reason;
-  const isOrchestrated = !!(
-    taskId &&
+  const isLifecycleSignal = !!(
     signalReason &&
     (signalReason === "task_assigned" || signalReason === "task_heartbeat")
   );
+  const isOrchestrated = !!taskId;
 
   // For orchestrated signals, the signal.space_id is the execution space which
   // isn't in the agent's routing config. Use the execution space for replies but
   // route via a synthetic peer so the default agent binding resolves correctly.
   const spaceId = payload.signal.space_id || payload.signal.task_id || "unknown";
   rememberSpaceAccount(spaceId, accountId);
-  const senderId = payload.message.author || (isOrchestrated ? "TaskRouter" : "unknown");
-  const senderName = payload.message.author || (isOrchestrated ? "TaskRouter" : "unknown");
+  const senderId = payload.message.author || (isLifecycleSignal ? "TaskRouter" : "unknown");
+  const senderName = payload.message.author || (isLifecycleSignal ? "TaskRouter" : "unknown");
   const isGroup = true;
 
   runtime.log(
