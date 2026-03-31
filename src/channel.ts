@@ -359,6 +359,134 @@ export const suitePlugin: ChannelPlugin = {
       execute: suiteToolExecute("space_list"),
     },
     {
+      name: "suite_space_get_context",
+      label: "Get Suite Space Context",
+      description:
+        "Get a bounded context snapshot for a Suite space, including recent messages, participants, canvases, and active tasks.",
+      parameters: Type.Object({
+        space_id: Type.String({ description: "UUID of the Suite space" }),
+        message_limit: Type.Optional(
+          Type.Number({ description: "Number of recent messages to include (default 10, max 20)" })
+        ),
+        include_canvases: Type.Optional(
+          Type.Boolean({ description: "Whether to include active canvas summaries (default true)" })
+        ),
+      }),
+      execute: suiteToolExecute("space_get_context"),
+    },
+    {
+      name: "space_get_context",
+      label: "Get Space Context",
+      description:
+        "Alias for suite_space_get_context. Use when prompts refer to space_get_context directly.",
+      parameters: Type.Object({
+        space_id: Type.String({ description: "UUID of the Suite space" }),
+        message_limit: Type.Optional(
+          Type.Number({ description: "Number of recent messages to include (default 10, max 20)" })
+        ),
+        include_canvases: Type.Optional(
+          Type.Boolean({ description: "Whether to include active canvas summaries (default true)" })
+        ),
+      }),
+      execute: suiteToolExecute("space_get_context"),
+    },
+    {
+      name: "suite_space_search_messages",
+      label: "Search Suite Space Messages",
+      description:
+        "Search messages in a Suite space with bounded results.",
+      parameters: Type.Object({
+        space_id: Type.String({ description: "UUID of the Suite space" }),
+        query: Type.String({ description: "Search query" }),
+        limit: Type.Optional(Type.Number({ description: "Maximum number of results to return (default 5, max 10)" })),
+      }),
+      execute: suiteToolExecute("space_search_messages"),
+    },
+    {
+      name: "space_search_messages",
+      label: "Search Space Messages",
+      description:
+        "Alias for suite_space_search_messages. Use when prompts refer to space_search_messages directly.",
+      parameters: Type.Object({
+        space_id: Type.String({ description: "UUID of the Suite space" }),
+        query: Type.String({ description: "Search query" }),
+        limit: Type.Optional(Type.Number({ description: "Maximum number of results to return (default 5, max 10)" })),
+      }),
+      execute: suiteToolExecute("space_search_messages"),
+    },
+    {
+      name: "suite_space_get_messages",
+      label: "Get Suite Space Messages",
+      description:
+        "Fetch a bounded message window for a Suite space.",
+      parameters: Type.Object({
+        space_id: Type.String({ description: "UUID of the Suite space" }),
+        around_message_id: Type.Optional(Type.String({ description: "Fetch a window centered around this message ID" })),
+        before_message_id: Type.Optional(Type.String({ description: "Fetch messages before this message ID" })),
+        after_message_id: Type.Optional(Type.String({ description: "Fetch messages after this message ID" })),
+        limit: Type.Optional(Type.Number({ description: "Maximum number of messages to return (default 10, max 20)" })),
+      }),
+      execute: suiteToolExecute("space_get_messages"),
+    },
+    {
+      name: "space_get_messages",
+      label: "Get Space Messages",
+      description:
+        "Alias for suite_space_get_messages. Use when prompts refer to space_get_messages directly.",
+      parameters: Type.Object({
+        space_id: Type.String({ description: "UUID of the Suite space" }),
+        around_message_id: Type.Optional(Type.String({ description: "Fetch a window centered around this message ID" })),
+        before_message_id: Type.Optional(Type.String({ description: "Fetch messages before this message ID" })),
+        after_message_id: Type.Optional(Type.String({ description: "Fetch messages after this message ID" })),
+        limit: Type.Optional(Type.Number({ description: "Maximum number of messages to return (default 10, max 20)" })),
+      }),
+      execute: suiteToolExecute("space_get_messages"),
+    },
+    {
+      name: "suite_canvas_list",
+      label: "List Suite Canvases",
+      description:
+        "List canvases in a Suite space with bounded summaries.",
+      parameters: Type.Object({
+        space_id: Type.String({ description: "UUID of the Suite space" }),
+        limit: Type.Optional(Type.Number({ description: "Maximum number of canvases to return (default 10, max 20)" })),
+      }),
+      execute: suiteToolExecute("canvas_list"),
+    },
+    {
+      name: "canvas_list",
+      label: "List Canvases",
+      description:
+        "Alias for suite_canvas_list. Use when prompts refer to canvas_list directly.",
+      parameters: Type.Object({
+        space_id: Type.String({ description: "UUID of the Suite space" }),
+        limit: Type.Optional(Type.Number({ description: "Maximum number of canvases to return (default 10, max 20)" })),
+      }),
+      execute: suiteToolExecute("canvas_list"),
+    },
+    {
+      name: "suite_canvas_get",
+      label: "Get Suite Canvas",
+      description:
+        "Retrieve a canvas from Startup Suite by ID, either as a summary or as the full document state.",
+      parameters: Type.Object({
+        canvas_id: Type.String({ description: "UUID of the canvas" }),
+        mode: Type.Optional(Type.String({ description: "Retrieval mode: summary or document (default summary)" })),
+      }),
+      execute: suiteToolExecute("canvas_get"),
+    },
+    {
+      name: "canvas_get",
+      label: "Get Canvas",
+      description:
+        "Alias for suite_canvas_get. Use when prompts refer to canvas_get directly.",
+      parameters: Type.Object({
+        canvas_id: Type.String({ description: "UUID of the canvas" }),
+        mode: Type.Optional(Type.String({ description: "Retrieval mode: summary or document (default summary)" })),
+      }),
+      execute: suiteToolExecute("canvas_get"),
+    },
+    {
       name: "suite_prompt_template_list",
       label: "List Suite Prompt Templates",
       description:

@@ -17,6 +17,19 @@ const requiredLifecycleTools = [
   "prompt_template_update",
 ];
 
+const requiredContextTools = [
+  "suite_space_get_context",
+  "space_get_context",
+  "suite_space_search_messages",
+  "space_search_messages",
+  "suite_space_get_messages",
+  "space_get_messages",
+  "suite_canvas_list",
+  "canvas_list",
+  "suite_canvas_get",
+  "canvas_get",
+];
+
 function extractBlock(source, startMarker, endMarker) {
   const start = source.indexOf(startMarker);
   if (start === -1) throw new Error(`Missing start marker: ${startMarker}`);
@@ -54,8 +67,9 @@ const registeredToolNames = uniqueSorted(
 const missingFromRegistered = diff(channelToolNames, registeredToolNames);
 const extraInRegistered = diff(registeredToolNames, channelToolNames);
 const missingLifecycle = diff(requiredLifecycleTools, channelToolNames);
+const missingContextTools = diff(requiredContextTools, channelToolNames);
 
-if (missingFromRegistered.length || extraInRegistered.length || missingLifecycle.length) {
+if (missingFromRegistered.length || extraInRegistered.length || missingLifecycle.length || missingContextTools.length) {
   console.error("Startup Suite plugin tool contract check failed.\n");
 
   if (missingFromRegistered.length) {
@@ -76,9 +90,15 @@ if (missingFromRegistered.length || extraInRegistered.length || missingLifecycle
     console.error("");
   }
 
+  if (missingContextTools.length) {
+    console.error("Missing required context tools from plugin agentTools:");
+    for (const name of missingContextTools) console.error(`  - ${name}`);
+    console.error("");
+  }
+
   process.exit(1);
 }
 
 console.log(
-  `Startup Suite plugin tool contract OK: ${channelToolNames.length} tools, lifecycle aliases present, suite-client registry in sync.`,
+  `Startup Suite plugin tool contract OK: ${channelToolNames.length} tools, lifecycle + context aliases present, suite-client registry in sync.`,
 );
