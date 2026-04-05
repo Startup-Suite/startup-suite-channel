@@ -14,9 +14,14 @@
   },
   "openclaw": {
     "extensions": [
-      "./dist/index.js"
+      "./index.ts"
     ],
-    "setupEntry": "./dist/setup-entry.js"
+    "setupEntry": "./setup-entry.ts",
+    "channel": {
+      "id": "startup-suite",
+      "label": "Startup Suite",
+      "blurb": "Connect to a Startup Suite deployment as a federated agent runtime"
+    }
   },
   "dependencies": {
     "@sinclair/typebox": "^0.32.0",
