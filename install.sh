@@ -144,6 +144,25 @@ if account_id:
         "maxReconnectIntervalMs": 60000
     }
 
+# Multi-agent: ensure a route binding exists for the named account
+if account_id:
+    bindings = cfg.setdefault("bindings", [])
+    has_binding = any(
+        b.get("type") == "route"
+        and b.get("match", {}).get("channel") == "startup-suite"
+        and b.get("match", {}).get("accountId") == account_id
+        for b in bindings
+    )
+    if not has_binding:
+        bindings.append({
+            "type": "route",
+            "agentId": account_id,
+            "match": {
+                "channel": "startup-suite",
+                "accountId": account_id
+            }
+        })
+
 # Ensure plugins.allow includes startup-suite-channel-plugin
 cfg.setdefault("plugins", {})
 allow = cfg["plugins"].setdefault("allow", [])
@@ -174,6 +193,7 @@ if [ -n "$ACCOUNT_ID" ]; then
   # Multi-agent: write account into openclaw.json
   configure_with_python
   echo "  ✓ Added account '$ACCOUNT_ID' to openclaw.json (channels.startup-suite.accounts.$ACCOUNT_ID)"
+  echo "  ✓ Added route binding for '$ACCOUNT_ID' → agent '$ACCOUNT_ID'"
 else
   # Single-agent: write config.json + register channel/plugin in openclaw.json
   cat > "$EXT_DIR/config.json" <<CONFIGEOF
