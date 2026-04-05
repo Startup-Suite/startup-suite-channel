@@ -5,32 +5,57 @@ import { Socket } from "phoenix";
 import WebSocket from "ws";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-// Try extension dir first, then repo root
-const configPaths = [
-  join(process.env.HOME || "~", ".openclaw/extensions/startup-suite-channel/config.json"),
-  join(__dirname, "..", "config.json"),
-];
+const accountId = process.argv[2] || process.env.SUITE_ACCOUNT_ID || "";
 
 let config;
-for (const p of configPaths) {
+let configSource;
+
+// Multi-agent: read from openclaw.json accounts map
+if (accountId) {
+  const ocPath = join(process.env.HOME || "~", ".openclaw/openclaw.json");
   try {
-    config = JSON.parse(readFileSync(p, "utf-8"));
-    console.log(`Using config: ${p}`);
-    break;
+    const oc = JSON.parse(readFileSync(ocPath, "utf-8"));
+    const account = oc?.channels?.["startup-suite"]?.accounts?.[accountId];
+    if (account) {
+      config = account;
+      configSource = `${ocPath} (account: ${accountId})`;
+    }
   } catch {
-    // try next
+    // fall through to config.json
   }
 }
 
+// Single-agent: try config.json
 if (!config) {
-  console.error("✗ No config.json found. Checked:");
-  configPaths.forEach((p) => console.error(`    ${p}`));
-  process.exit(1);
+  const configPaths = [
+    join(process.env.HOME || "~", ".openclaw/extensions/startup-suite-channel/config.json"),
+    join(__dirname, "..", "config.json"),
+  ];
+
+  for (const p of configPaths) {
+    try {
+      config = JSON.parse(readFileSync(p, "utf-8"));
+      configSource = p;
+      break;
+    } catch {
+      // try next
+    }
+  }
+
+  if (!config) {
+    console.error("✗ No config found. Checked:");
+    if (accountId) {
+      console.error(`    openclaw.json account: ${accountId}`);
+    }
+    configPaths.forEach((p) => console.error(`    ${p}`));
+    process.exit(1);
+  }
 }
 
+console.log(`Using config: ${configSource}`);
+
 if (!config.url || !config.runtimeId || !config.token) {
-  console.error("✗ config.json is missing required fields (url, runtimeId, token)");
+  console.error("✗ Config is missing required fields (url, runtimeId, token)");
   process.exit(1);
 }
 
