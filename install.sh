@@ -10,6 +10,7 @@ SUITE_URL=""
 RUNTIME_ID=""
 TOKEN=""
 ACCOUNT_ID=""   # optional named account (for multi-agent setups)
+AGENT_ID=""     # which openclaw agent to route messages to
 
 usage() {
   echo "Usage: install.sh [OPTIONS]"
@@ -20,6 +21,7 @@ usage() {
   echo "  --token TOKEN        Authentication token from Suite federate flow"
   echo "  --account-id NAME    Named account for multi-agent setups (e.g. 'beacon', 'sage')"
   echo "                       Omit for single-agent installs (uses config.json default)"
+  echo "  --agent-id NAME      OpenClaw agent to route messages to (defaults to account-id)"
   echo "  -h, --help           Show this help"
   echo ""
   echo "Single-agent (default):"
@@ -29,6 +31,9 @@ usage() {
   echo "Multi-agent (adds a named account to openclaw.json):"
   echo "  ./install.sh --account-id beacon --runtime-id beacon-id --token beacon-token"
   echo "  ./install.sh --account-id sage   --runtime-id sage-id   --token sage-token"
+  echo ""
+  echo "Route to an existing agent (e.g. same agent across channels):"
+  echo "  ./install.sh --account-id kobo-suite --agent-id kobo --runtime-id id --token tok"
   exit 0
 }
 
@@ -38,6 +43,7 @@ while [[ $# -gt 0 ]]; do
     --runtime-id) RUNTIME_ID="$2"; shift 2 ;;
     --token) TOKEN="$2"; shift 2 ;;
     --account-id) ACCOUNT_ID="$2"; shift 2 ;;
+    --agent-id) AGENT_ID="$2"; shift 2 ;;
     -h|--help) usage ;;
     *) echo "Unknown option: $1"; usage ;;
   esac
@@ -82,10 +88,18 @@ if [ -z "$RUNTIME_ID" ] || [ -z "$TOKEN" ]; then
     read -rp "Account ID [leave blank for default]: " ACCOUNT_ID
   fi
 
+  if [ -n "$ACCOUNT_ID" ] && [ -z "$AGENT_ID" ]; then
+    echo ""
+    echo "Agent ID is which openclaw agent should handle messages from this account."
+    echo "Leave blank to use the account ID ('$ACCOUNT_ID')."
+    read -rp "Agent ID [$ACCOUNT_ID]: " AGENT_ID
+  fi
+
   echo ""
 fi
 
 SUITE_URL="${SUITE_URL:-wss://suite.milvenan.technology/runtime/ws}"
+AGENT_ID="${AGENT_ID:-$ACCOUNT_ID}"
 
 echo "Installing Startup Suite Channel plugin..."
 echo ""
@@ -113,10 +127,10 @@ echo "  ✓ Installed npm dependencies"
 # Multi-agent: write named account into openclaw.json accounts map
 
 configure_with_python() {
-  python3 - "$OC_CONFIG" "$SUITE_URL" "$RUNTIME_ID" "$TOKEN" "$ACCOUNT_ID" <<'PYEOF'
+  python3 - "$OC_CONFIG" "$SUITE_URL" "$RUNTIME_ID" "$TOKEN" "$ACCOUNT_ID" "$AGENT_ID" <<'PYEOF'
 import json, sys
 
-path, url, runtime_id, token, account_id = sys.argv[1:6]
+path, url, runtime_id, token, account_id, agent_id = sys.argv[1:7]
 
 try:
     with open(path) as f:
@@ -156,7 +170,7 @@ if account_id:
     if not has_binding:
         bindings.append({
             "type": "route",
-            "agentId": account_id,
+            "agentId": agent_id,
             "match": {
                 "channel": "startup-suite",
                 "accountId": account_id
@@ -193,7 +207,7 @@ if [ -n "$ACCOUNT_ID" ]; then
   # Multi-agent: write account into openclaw.json
   configure_with_python
   echo "  ✓ Added account '$ACCOUNT_ID' to openclaw.json (channels.startup-suite.accounts.$ACCOUNT_ID)"
-  echo "  ✓ Added route binding for '$ACCOUNT_ID' → agent '$ACCOUNT_ID'"
+  echo "  ✓ Added route binding for '$ACCOUNT_ID' → agent '$AGENT_ID'"
 else
   # Single-agent: write config.json + register channel/plugin in openclaw.json
   cat > "$EXT_DIR/config.json" <<CONFIGEOF
