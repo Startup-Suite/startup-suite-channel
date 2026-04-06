@@ -105,7 +105,7 @@ echo "Installing Startup Suite Channel plugin..."
 echo ""
 
 # ── 1. Copy files ──────────────────────────────────────────────────
-mkdir -p "$EXT_DIR/src"
+mkdir -p "$EXT_DIR/src" "$EXT_DIR/scripts"
 
 cp "$SCRIPT_DIR/package.json" \
    "$SCRIPT_DIR/openclaw.plugin.json" \
@@ -232,9 +232,9 @@ TEST_NOW="${TEST_NOW:-y}"
 
 if [[ "$TEST_NOW" =~ ^[Yy] ]]; then
   if [ -f "$SCRIPT_DIR/scripts/test-connection.sh" ]; then
-    bash "$SCRIPT_DIR/scripts/test-connection.sh"
+    bash "$SCRIPT_DIR/scripts/test-connection.sh" "$ACCOUNT_ID"
   elif [ -f "$SCRIPT_DIR/scripts/test-connection.js" ]; then
-    node "$SCRIPT_DIR/scripts/test-connection.js"
+    node "$SCRIPT_DIR/scripts/test-connection.js" "$ACCOUNT_ID"
   else
     echo "  No test script found — skipping"
   fi
