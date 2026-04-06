@@ -96,6 +96,7 @@ mkdir -p "$EXT_DIR/src"
 cp "$SCRIPT_DIR/package.json" \
    "$SCRIPT_DIR/openclaw.plugin.json" \
    "$SCRIPT_DIR/index.ts" \
+   "$SCRIPT_DIR/setup-entry.ts" \
    "$SCRIPT_DIR/config.example.json" \
    "$EXT_DIR/"
 
