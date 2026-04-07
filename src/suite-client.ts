@@ -132,17 +132,20 @@ export class SuiteClient {
     });
 
     this.socket.onOpen(() => {
+      console.log(`[suite-client] Socket opened (attempt ${this.reconnectAttempts} resets to 0)`);
       this.reconnectAttempts = 0;
     });
 
-    this.socket.onClose(() => {
+    this.socket.onClose((event: any) => {
+      console.warn(`[suite-client] Socket closed — code: ${event?.code ?? "unknown"}, reason: ${event?.reason || "none"}, wasClean: ${event?.wasClean ?? "unknown"}`);
       if (!this.stopped) {
         this.handlers.onDisconnect();
         this.scheduleReconnect();
       }
     });
 
-    this.socket.onError(() => {
+    this.socket.onError((error: any) => {
+      console.error(`[suite-client] Socket error:`, error?.message || error);
       if (!this.stopped) {
         this.handlers.onDisconnect();
       }

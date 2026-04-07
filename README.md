@@ -66,6 +66,18 @@ openclaw gateway restart
 
 ---
 
+## Updating
+
+To update an existing installation after pulling new changes (without touching your config or `openclaw.json`):
+
+```bash
+git pull
+bash update.sh
+openclaw gateway restart
+```
+
+---
+
 ## Configuration
 
 ### Single agent (simple — uses config.json)
