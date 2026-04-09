@@ -536,6 +536,65 @@ export const suitePlugin: ChannelPlugin = {
       parameters: Type.Object({}),
       execute: suiteToolExecute("federation_status"),
     },
+    {
+      name: "suite_org_context_read",
+      label: "Read Org Context File",
+      description:
+        "Read an organizational context file by key (e.g. ORG_IDENTITY.md, ORG_MEMORY.md). Returns the file content, current version, and metadata.",
+      parameters: Type.Object({
+        file_key: Type.String({ description: "File key to read (e.g. 'ORG_IDENTITY.md')" }),
+      }),
+      execute: suiteToolExecute("org_context_read"),
+    },
+    {
+      name: "suite_org_context_write",
+      label: "Write Org Context File",
+      description:
+        "Write or update an organizational context file by key. Creates the file if it doesn't exist. Supports optimistic locking via expected_version to prevent conflicting writes.",
+      parameters: Type.Object({
+        file_key: Type.String({ description: "File key to write (e.g. 'ORG_IDENTITY.md')" }),
+        content: Type.String({ description: "Full content to write to the file" }),
+        updated_by: Type.Optional(Type.String({ description: "UUID of the user or agent making the update" })),
+        expected_version: Type.Optional(Type.Number({ description: "Expected current version for optimistic locking — write fails if file was modified since this version" })),
+      }),
+      execute: suiteToolExecute("org_context_write"),
+    },
+    {
+      name: "suite_org_context_list",
+      label: "List Org Context Files",
+      description:
+        "List all available organizational context files with their keys, versions, and metadata. Use to discover what context files exist before reading or writing.",
+      parameters: Type.Object({}),
+      execute: suiteToolExecute("org_context_list"),
+    },
+    {
+      name: "suite_org_memory_append",
+      label: "Append Org Memory Entry",
+      description:
+        "Append a new entry to organizational memory. Entries are append-only and timestamped. Use to record decisions, observations, or learnings for future reference.",
+      parameters: Type.Object({
+        content: Type.String({ description: "Memory content to append" }),
+        memory_type: Type.Optional(Type.String({ description: "Memory type: 'daily' (default) or 'long_term'" })),
+        date: Type.Optional(Type.String({ description: "ISO 8601 date (YYYY-MM-DD) for the entry (default: today)" })),
+        authored_by: Type.Optional(Type.String({ description: "UUID of the user or agent authoring this entry" })),
+        metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Additional metadata for the memory entry" })),
+      }),
+      execute: suiteToolExecute("org_memory_append"),
+    },
+    {
+      name: "suite_org_memory_search",
+      label: "Search Org Memory",
+      description:
+        "Search organizational memory entries with optional filters. Supports case-insensitive substring matching, date ranges, and memory type filtering.",
+      parameters: Type.Object({
+        query: Type.Optional(Type.String({ description: "Case-insensitive substring search query" })),
+        memory_type: Type.Optional(Type.String({ description: "Filter by memory type: 'daily' or 'long_term'" })),
+        date_from: Type.Optional(Type.String({ description: "ISO 8601 date (YYYY-MM-DD) — include entries on or after this date" })),
+        date_to: Type.Optional(Type.String({ description: "ISO 8601 date (YYYY-MM-DD) — include entries on or before this date" })),
+        limit: Type.Optional(Type.Number({ description: "Maximum number of results to return (default: 50)" })),
+      }),
+      execute: suiteToolExecute("org_memory_search"),
+    },
   ],
 
   outbound: {

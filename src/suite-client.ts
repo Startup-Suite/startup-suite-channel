@@ -269,6 +269,11 @@ export class SuiteClient {
         "prompt_template_update",
         "suite_prompt_template_update",
         "suite_federation_status",
+        "suite_org_context_read",
+        "suite_org_context_write",
+        "suite_org_context_list",
+        "suite_org_memory_append",
+        "suite_org_memory_search",
       ];
       const available = (payload.tools || []).map((t: any) => t.name);
       const unregistered = available.filter(
