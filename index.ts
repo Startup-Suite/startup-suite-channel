@@ -1,8 +1,9 @@
 import { defineChannelPluginEntry } from "openclaw/plugin-sdk/core";
 import { suitePlugin } from "./src/channel.js";
-import { clientForSpace, getTaskWorkers } from "./src/plugin-state.js";
+import { clientForSpace, getTaskWorkers, sessionContextCache } from "./src/plugin-state.js";
 import { setSuiteRuntime } from "./src/runtime.js";
 import { parseTaskSessionKey } from "./src/session-key.js";
+import { formatContextPreamble } from "./src/message-bridge.js";
 
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   "claude-sonnet-4-6": { input: 3.0, output: 15.0 },
@@ -76,10 +77,30 @@ export default defineChannelPluginEntry({
   setRuntime: setSuiteRuntime,
   registerFull(api) {
     api.on("before_prompt_build", (_event, ctx) => {
+      const spaceId = resolveSpaceId(ctx.sessionKey);
+      const result: { appendSystemContext?: string; prependContext?: string } = {
+        appendSystemContext: `Current space ID: ${spaceId}\n\nNote: Most suite tools require a space_id parameter.`
+      };
+
+      // Add task phase guidance if in task mode
       const taskSession = parseTaskSessionKey(ctx.sessionKey);
       const guidance = taskPhaseGuidance(taskSession);
-      if (!guidance) return;
-      return { prependContext: `TASK MODE\n${guidance}` };
+      if (guidance) {
+        result.prependContext = `TASK MODE\n${guidance}`;
+      }
+
+      // Inject cached Suite context if available
+      const cachedContext = sessionContextCache.get(ctx.sessionKey);
+      if (cachedContext) {
+        const preamble = formatContextPreamble(cachedContext);
+        if (preamble) {
+          result.prependContext = result.prependContext
+            ? `${preamble}\n${result.prependContext}`
+            : preamble;
+        }
+      }
+
+      return result;
     });
 
     api.on("session_start", (event, ctx) => {

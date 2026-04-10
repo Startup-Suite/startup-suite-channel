@@ -10,6 +10,9 @@ const spaceToAccountId = new Map<string, string>();
 
 let taskWorkers: TaskWorkerController | null = null;
 
+// Session context cache - stores Suite context for dynamic injection via OpenClaw hooks
+export const sessionContextCache: Map<string, any> = new Map();
+
 function loadLegacyConfig(): SuiteConfig {
   const raw = readFileSync(join(__dirname, "..", "config.json"), "utf-8");
   return JSON.parse(raw);
