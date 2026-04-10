@@ -1,6 +1,6 @@
 import { defineChannelPluginEntry } from "openclaw/plugin-sdk/core";
 import { suitePlugin } from "./src/channel.js";
-import { clientForSpace, getTaskWorkers, sessionContextCache } from "./src/plugin-state.js";
+import { clientForSpace, getTaskWorkers, getSessionContextCache } from "./src/plugin-state.js";
 import { setSuiteRuntime } from "./src/runtime.js";
 import { parseTaskSessionKey } from "./src/session-key.js";
 import { formatContextPreamble } from "./src/message-bridge.js";
@@ -76,6 +76,8 @@ export default defineChannelPluginEntry({
   plugin: suitePlugin,
   setRuntime: setSuiteRuntime,
   registerFull(api) {
+    const sessionContextCache = getSessionContextCache();
+
     api.on("before_prompt_build", (_event, ctx) => {
       const spaceId = resolveSpaceId(ctx.sessionKey);
       const result: { appendSystemContext?: string; prependContext?: string } = {
@@ -89,14 +91,24 @@ export default defineChannelPluginEntry({
         result.prependContext = `TASK MODE\n${guidance}`;
       }
 
-      // Inject cached Suite context if available
-      const cachedContext = sessionContextCache.get(ctx.sessionKey);
-      if (cachedContext) {
-        const preamble = formatContextPreamble(cachedContext);
+      // Inject cached Suite context selectively (only for first message, after gaps, or near context limit)
+      // The cache tracks message count and last access time internally
+      // Note: ctx.estimatedTokens and ctx.tokenCount may not be available in all OpenClaw versions,
+      // so we pass undefined for currentTokenCount - the cache will use message count and inactivity time
+      const contextResult = sessionContextCache.getContextForInjection(
+        ctx.sessionKey,
+        undefined
+      );
+
+      if (contextResult) {
+        const preamble = formatContextPreamble(contextResult.context);
         if (preamble) {
           result.prependContext = result.prependContext
             ? `${preamble}\n${result.prependContext}`
             : preamble;
+
+          // Log when context was injected (for debugging)
+          console.log(`[suite-context] Injected context for ${ctx.sessionKey}: ${contextResult.reason}`);
         }
       }
 
@@ -110,6 +122,16 @@ export default defineChannelPluginEntry({
         sessionId: event.sessionId,
         sessionKey: ctx.sessionKey ?? event.sessionKey,
       });
+    });
+
+    api.on("session_end", (_event, ctx) => {
+      // Clean up cached context when session ends
+      if (ctx.sessionKey) {
+        const removed = sessionContextCache.removeSession(ctx.sessionKey);
+        if (removed) {
+          console.log(`[suite-context] Cleaned up cache for ended session: ${ctx.sessionKey}`);
+        }
+      }
     });
 
     api.on("llm_input", (event, ctx) => {

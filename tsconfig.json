@@ -14,5 +14,6 @@
     "sourceMap": false,
     "lib": ["ES2022", "DOM"]
   },
-  "include": ["index.ts", "setup-entry.ts", "src/**/*.ts"]
+  "include": ["index.ts", "setup-entry.ts", "src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "**/*.test.ts", "node_modules", "dist"]
 }

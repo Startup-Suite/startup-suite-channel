@@ -1,6 +1,6 @@
 import { type OpenClawConfig, type RuntimeEnv } from "./runtime-api.js";
 import { getSuiteRuntime } from "./runtime.js";
-import { getTaskWorkers, rememberSpaceAccount, sessionContextCache } from "./plugin-state.js";
+import { getTaskWorkers, getSessionContextCache } from "./plugin-state.js";
 import { buildTaskSessionKey, type TaskPhase } from "./session-key.js";
 import type { AttentionPayload } from "./suite-client.js";
 import type { SuiteClient } from "./suite-client.js";
@@ -39,7 +39,7 @@ export async function handleSuiteInbound(params: {
   // isn't in the agent's routing config. Use the execution space for replies but
   // route via a synthetic peer so the default agent binding resolves correctly.
   const spaceId = payload.signal.space_id || payload.signal.task_id || "unknown";
-  rememberSpaceAccount(spaceId, accountId);
+
   const senderId = payload.message.author || (isLifecycleSignal ? "TaskRouter" : "unknown");
   const senderName = payload.message.author || (isLifecycleSignal ? "TaskRouter" : "unknown");
   const isGroup = true;
@@ -59,14 +59,20 @@ export async function handleSuiteInbound(params: {
     },
   });
 
+  // Store spaceId to accountId mapping for tools
+  const { rememberSpaceAccount } = await import("./plugin-state.js");
+  rememberSpaceAccount(spaceId, accountId);
+
   runtime.log(
     `[suite-inbound] reason=${signalReason || "chat"} task=${taskId || "none"} ` +
     `space=${spaceId} orchestrated=${isOrchestrated}`
   );
 
-  // Store the Suite context for dynamic injection via before_prompt_build hook
+  // Store the Suite context in the cache for dynamic injection via before_prompt_build hook
+  // The cache handles selective injection (only first message, after gaps, or near context limits)
   const sessionKey = route.sessionKey;
-  sessionContextCache.set(sessionKey, payload.context);
+  const sessionContextCache = getSessionContextCache();
+  sessionContextCache.setContext(sessionKey, payload.context);
 
   // Simple enriched body - context is now injected via OpenClaw hooks
   const enrichedBody = `**${senderName}**: ${rawBody}`;

@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { SuiteClient, SuiteConfig } from "./suite-client.js";
 import { TaskWorkerController } from "./task-worker-controller.js";
+import { SessionContextCache, getSessionContextCache } from "./session-context-cache.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const clients = new Map<string, SuiteClient>();
@@ -11,7 +12,25 @@ const spaceToAccountId = new Map<string, string>();
 let taskWorkers: TaskWorkerController | null = null;
 
 // Session context cache - stores Suite context for dynamic injection via OpenClaw hooks
-export const sessionContextCache: Map<string, any> = new Map();
+// Use getSessionContextCache() for access (exports the singleton instance)
+export { SessionContextCache };
+
+// Legacy export for backward compatibility - prefer using getSessionContextCache()
+export const sessionContextCache = {
+  get(sessionKey: string) {
+    const entry = getSessionContextCache().getEntry(sessionKey);
+    return entry?.context;
+  },
+  set(sessionKey: string, context: any) {
+    getSessionContextCache().setContext(sessionKey, context);
+  },
+  has(sessionKey: string) {
+    return getSessionContextCache().hasSession(sessionKey);
+  },
+  delete(sessionKey: string) {
+    return getSessionContextCache().removeSession(sessionKey);
+  },
+};
 
 function loadLegacyConfig(): SuiteConfig {
   const raw = readFileSync(join(__dirname, "..", "config.json"), "utf-8");
@@ -111,3 +130,6 @@ export function getTaskWorkers(): TaskWorkerController {
 
   return taskWorkers;
 }
+
+// Re-export cache getter for use in index.ts
+export { getSessionContextCache };
