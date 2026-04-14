@@ -80,12 +80,8 @@ export default defineChannelPluginEntry({
     const sessionContextCache = getSessionContextCache();
 
     api.on("before_prompt_build", (_event, ctx) => {
-      const spaceId = resolveSpaceId(ctx.sessionKey);
-      const result: { appendSystemContext?: string; prependContext?: string } = {
-        appendSystemContext: `Current space ID: ${spaceId}\n\nNote: Most suite tools require a space_id parameter.`
-      };
+      const result: { prependContext?: string } = {};
 
-      // Add task phase guidance if in task mode
       const taskSession = parseTaskSessionKey(ctx.sessionKey);
       const guidance = taskPhaseGuidance(taskSession);
       if (guidance) {
