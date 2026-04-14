@@ -1,6 +1,7 @@
 import { defineChannelPluginEntry } from "openclaw/plugin-sdk/core";
 import { suitePlugin } from "./src/channel.js";
-import { clientForSpace, getTaskWorkers, getSessionContextCache } from "./src/plugin-state.js";
+import { clientForSpace, getTaskWorkers } from "./src/plugin-state.js";
+import { getSessionContextCache } from "./src/session-context-cache.js";
 import { setSuiteRuntime } from "./src/runtime.js";
 import { parseTaskSessionKey } from "./src/session-key.js";
 import { formatContextPreamble } from "./src/message-bridge.js";

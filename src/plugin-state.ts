@@ -3,8 +3,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { SuiteClient, SuiteConfig } from "./suite-client.js";
 import { TaskWorkerController } from "./task-worker-controller.js";
-import { getSessionContextCache } from "./session-context-cache.js";
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const clients = new Map<string, SuiteClient>();
 const spaceToAccountId = new Map<string, string>();
@@ -109,5 +107,3 @@ export function getTaskWorkers(): TaskWorkerController {
 
   return taskWorkers;
 }
-
-export { getSessionContextCache };

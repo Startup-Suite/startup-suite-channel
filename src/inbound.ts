@@ -1,6 +1,7 @@
 import { type OpenClawConfig, type RuntimeEnv } from "./runtime-api.js";
 import { getSuiteRuntime } from "./runtime.js";
-import { getTaskWorkers, getSessionContextCache } from "./plugin-state.js";
+import { getTaskWorkers } from "./plugin-state.js";
+import { getSessionContextCache } from "./session-context-cache.js";
 import { buildTaskSessionKey, type TaskPhase } from "./session-key.js";
 import type { AttentionPayload } from "./suite-client.js";
 import type { SuiteClient } from "./suite-client.js";
