@@ -80,18 +80,14 @@ export default defineChannelPluginEntry({
     const sessionContextCache = getSessionContextCache();
 
     api.on("before_prompt_build", (_event, ctx) => {
-      const result: { prependContext?: string } = {};
+      const result: { prependContext?: string; prependSystemContext?: string } = {};
 
       const taskSession = parseTaskSessionKey(ctx.sessionKey);
       const guidance = taskPhaseGuidance(taskSession);
       if (guidance) {
-        result.prependContext = `TASK MODE\n${guidance}`;
+        result.prependSystemContext = `TASK MODE\n${guidance}`;
       }
 
-      // Inject cached Suite context selectively (only for first message, after gaps, or near context limit)
-      // The cache tracks message count and last access time internally
-      // Note: ctx.estimatedTokens and ctx.tokenCount may not be available in all OpenClaw versions,
-      // so we pass undefined for currentTokenCount - the cache will use message count and inactivity time
       const contextResult = sessionContextCache.getContextForInjection(
         ctx.sessionKey,
         undefined
@@ -100,11 +96,7 @@ export default defineChannelPluginEntry({
       if (contextResult) {
         const preamble = formatContextPreamble(contextResult.context);
         if (preamble) {
-          result.prependContext = result.prependContext
-            ? `${preamble}\n${result.prependContext}`
-            : preamble;
-
-          // Log when context was injected (for debugging)
+          result.prependContext = preamble;
           console.log(`[suite-context] Injected context for ${ctx.sessionKey}: ${contextResult.reason}`);
         }
       }
