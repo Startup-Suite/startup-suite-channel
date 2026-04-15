@@ -107,11 +107,6 @@ export function clientForSpace(spaceId?: string | null): SuiteClient | null {
   return clients.values().next().value ?? null;
 }
 
-export function clientForTool(args: any): SuiteClient | null {
-  const spaceId = args?.space_id;
-  return clientForSpace(spaceId);
-}
-
 export function getTaskWorkers(): TaskWorkerController {
   if (!taskWorkers) {
     taskWorkers = new TaskWorkerController((executionSpaceId?: string) =>
