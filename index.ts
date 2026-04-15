@@ -1,10 +1,10 @@
 import { defineChannelPluginEntry } from "openclaw/plugin-sdk/core";
 import { suitePlugin } from "./src/channel.js";
-import { clientForSpace, getTaskWorkers } from "./src/plugin-state.js";
-import { getSessionContextCache } from "./src/session-context-cache.js";
+import { clientForSpace, clearSessionContext, getSessionContext, getTaskWorkers } from "./src/plugin-state.js";
 import { setSuiteRuntime } from "./src/runtime.js";
 import { parseTaskSessionKey } from "./src/session-key.js";
 import { formatContextPreamble } from "./src/message-bridge.js";
+import type { AttentionPayload } from "./src/suite-client.js";
 
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   "claude-sonnet-4-6": { input: 3.0, output: 15.0 },
@@ -77,31 +77,21 @@ export default defineChannelPluginEntry({
   plugin: suitePlugin,
   setRuntime: setSuiteRuntime,
   registerFull(api) {
-    const sessionContextCache = getSessionContextCache();
-
     api.on("before_prompt_build", (_event, ctx) => {
-      const result: { prependContext?: string; prependSystemContext?: string } = {};
+      const segments: string[] = [];
+
+      const context = getSessionContext(ctx.sessionKey);
+      if (context) {
+        const preamble = formatContextPreamble(context as AttentionPayload["context"]);
+        if (preamble) segments.push(preamble);
+      }
 
       const taskSession = parseTaskSessionKey(ctx.sessionKey);
       const guidance = taskPhaseGuidance(taskSession);
-      if (guidance) {
-        result.prependSystemContext = `TASK MODE\n${guidance}`;
-      }
+      if (guidance) segments.push(`TASK MODE\n${guidance}`);
 
-      const contextResult = sessionContextCache.getContextForInjection(
-        ctx.sessionKey,
-        undefined
-      );
-
-      if (contextResult) {
-        const preamble = formatContextPreamble(contextResult.context);
-        if (preamble) {
-          result.prependContext = preamble;
-          console.log(`[suite-context] Injected context for ${ctx.sessionKey}: ${contextResult.reason}`);
-        }
-      }
-
-      return result;
+      if (segments.length === 0) return;
+      return { prependSystemContext: segments.join("\n\n") };
     });
 
     api.on("session_start", (event, ctx) => {
@@ -114,13 +104,7 @@ export default defineChannelPluginEntry({
     });
 
     api.on("session_end", (_event, ctx) => {
-      // Clean up cached context when session ends
-      if (ctx.sessionKey) {
-        const removed = sessionContextCache.removeSession(ctx.sessionKey);
-        if (removed) {
-          console.log(`[suite-context] Cleaned up cache for ended session: ${ctx.sessionKey}`);
-        }
-      }
+      if (ctx.sessionKey) clearSessionContext(ctx.sessionKey);
     });
 
     api.on("llm_input", (event, ctx) => {

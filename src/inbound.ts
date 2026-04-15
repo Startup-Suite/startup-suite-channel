@@ -1,7 +1,6 @@
 import { type OpenClawConfig, type RuntimeEnv } from "./runtime-api.js";
 import { getSuiteRuntime } from "./runtime.js";
-import { getTaskWorkers } from "./plugin-state.js";
-import { getSessionContextCache } from "./session-context-cache.js";
+import { getTaskWorkers, setSessionContext } from "./plugin-state.js";
 import { buildTaskSessionKey, type TaskPhase } from "./session-key.js";
 import type { AttentionPayload } from "./suite-client.js";
 import type { SuiteClient } from "./suite-client.js";
@@ -69,11 +68,7 @@ export async function handleSuiteInbound(params: {
     `space=${spaceId} orchestrated=${isOrchestrated}`
   );
 
-  // Store the Suite context in the cache for dynamic injection via before_prompt_build hook
-  // The cache handles selective injection (only first message, after gaps, or near context limits)
-  const sessionKey = route.sessionKey;
-  const sessionContextCache = getSessionContextCache();
-  sessionContextCache.setContext(sessionKey, payload.context);
+  setSessionContext(route.sessionKey, payload.context);
 
   // Simple enriched body - context is now injected via OpenClaw hooks
   const enrichedBody = `**${senderName}**: ${rawBody}`;
