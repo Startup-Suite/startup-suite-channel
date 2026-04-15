@@ -3,12 +3,25 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { SuiteClient, SuiteConfig } from "./suite-client.js";
 import { TaskWorkerController } from "./task-worker-controller.js";
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const clients = new Map<string, SuiteClient>();
 const spaceToAccountId = new Map<string, string>();
+const sessionContexts = new Map<string, unknown>();
 
 let taskWorkers: TaskWorkerController | null = null;
+
+export function setSessionContext(sessionKey: string, context: unknown): void {
+  sessionContexts.set(sessionKey, context);
+}
+
+export function getSessionContext(sessionKey: string | null | undefined): unknown {
+  if (!sessionKey) return undefined;
+  return sessionContexts.get(sessionKey);
+}
+
+export function clearSessionContext(sessionKey: string): boolean {
+  return sessionContexts.delete(sessionKey);
+}
 
 function loadLegacyConfig(): SuiteConfig {
   const raw = readFileSync(join(__dirname, "..", "config.json"), "utf-8");

@@ -1,8 +1,10 @@
 import { defineChannelPluginEntry } from "openclaw/plugin-sdk/core";
 import { suitePlugin } from "./src/channel.js";
-import { clientForSpace, getTaskWorkers } from "./src/plugin-state.js";
+import { clientForSpace, clearSessionContext, getSessionContext, getTaskWorkers } from "./src/plugin-state.js";
 import { setSuiteRuntime } from "./src/runtime.js";
 import { parseTaskSessionKey } from "./src/session-key.js";
+import { formatContextPreamble } from "./src/message-bridge.js";
+import type { AttentionPayload } from "./src/suite-client.js";
 
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   "claude-sonnet-4-6": { input: 3.0, output: 15.0 },
@@ -76,10 +78,20 @@ export default defineChannelPluginEntry({
   setRuntime: setSuiteRuntime,
   registerFull(api) {
     api.on("before_prompt_build", (_event, ctx) => {
+      const segments: string[] = [];
+
+      const context = getSessionContext(ctx.sessionKey);
+      if (context) {
+        const preamble = formatContextPreamble(context as AttentionPayload["context"]);
+        if (preamble) segments.push(preamble);
+      }
+
       const taskSession = parseTaskSessionKey(ctx.sessionKey);
       const guidance = taskPhaseGuidance(taskSession);
-      if (!guidance) return;
-      return { prependContext: `TASK MODE\n${guidance}` };
+      if (guidance) segments.push(`TASK MODE\n${guidance}`);
+
+      if (segments.length === 0) return;
+      return { prependSystemContext: segments.join("\n\n") };
     });
 
     api.on("session_start", (event, ctx) => {
@@ -89,6 +101,10 @@ export default defineChannelPluginEntry({
         sessionId: event.sessionId,
         sessionKey: ctx.sessionKey ?? event.sessionKey,
       });
+    });
+
+    api.on("session_end", (_event, ctx) => {
+      if (ctx.sessionKey) clearSessionContext(ctx.sessionKey);
     });
 
     api.on("llm_input", (event, ctx) => {
