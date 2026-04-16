@@ -65,6 +65,10 @@ export interface AttentionPayload {
     };
     execution_space_id?: string;
     skills?: Array<{ name: string; content: string }>;
+    // Org-level context bundle (from Platform.Org.Context.build_context/1)
+    // Keys are file names: ORG_IDENTITY.md, ORG_MEMORY.md, ORG_AGENTS.md,
+    // and ORG_NOTES-YYYY-MM-DD for recent daily memory entries.
+    org?: Record<string, string>;
   };
   tools?: Array<{ name: string; description: string; parameters: object }>;
 }

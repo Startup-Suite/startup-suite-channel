@@ -1,15 +1,51 @@
 import type { AttentionPayload } from "./suite-client.js";
 
 /**
- * Build a markdown preamble from Suite space context.
- * Used by the inbound handler to enrich the agent envelope body.
+ * Build a markdown preamble from Suite context.
+ * Used by the before_prompt_build hook to inject context into the system prompt.
  *
- * Handles two context shapes:
+ * Handles three context shapes (any or all may be present):
+ * - Organization (Platform.Org.Context): org files + recent ORG_NOTES-*
  * - Chat attention (ContextPlane): space, canvases, tasks, agents, activity_summary
  * - Task orchestration (ContextAssembler): project, epic, task, plan, skills
  */
 export function formatContextPreamble(context: AttentionPayload["context"]): string {
   const lines: string[] = [];
+
+  // ── Organization context (shared across chat + task paths) ──────────
+  if (context.org && Object.keys(context.org).length > 0) {
+    const orgEntries = Object.entries(context.org);
+    const files = orgEntries.filter(([key]) => !key.startsWith("ORG_NOTES-"));
+    const notes = orgEntries
+      .filter(([key]) => key.startsWith("ORG_NOTES-"))
+      .sort(([a], [b]) => b.localeCompare(a));
+
+    lines.push("## Organization Context");
+    lines.push("");
+
+    for (const [key, content] of files) {
+      if (!content?.trim()) continue;
+      lines.push(`### ${key}`);
+      lines.push(content.trim());
+      lines.push("");
+    }
+
+    if (notes.length > 0) {
+      lines.push("### Recent Org Notes");
+      for (const [key, content] of notes) {
+        if (!content?.trim()) continue;
+        lines.push(`**${key}**`);
+        lines.push(content.trim());
+        lines.push("");
+      }
+    }
+
+    lines.push("### Writing to Org Memory");
+    lines.push(
+      "Org memory is a first-class responsibility. Record decisions and milestones future agents will care about: architectural decisions (what, why, alternatives), new integrations or dependencies, context shifts, blockers resolved (what broke, how, what to watch), and notable milestones. Use `suite_org_memory_append` for daily notes (append-only). Use `suite_org_context_write` to update curated files (`ORG_MEMORY.md` for long-term knowledge, `ORG_AGENTS.md` for roster changes). Brief, concrete entries beat long essays — one decision per entry.",
+    );
+    lines.push("");
+  }
 
   // ── Space context (chat attention) ──────────────────────────────────
   if (context.space) {
