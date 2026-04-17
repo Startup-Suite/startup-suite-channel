@@ -9,7 +9,10 @@ import type { AttentionPayload } from "./suite-client.js";
  * - Chat attention (ContextPlane): space, canvases, tasks, agents, activity_summary
  * - Task orchestration (ContextAssembler): project, epic, task, plan, skills
  */
-export function formatContextPreamble(context: AttentionPayload["context"]): string {
+export function formatContextPreamble(
+  context: AttentionPayload["context"],
+  opts: { useMcpTools?: boolean } = {}
+): string {
   const lines: string[] = [];
 
   // ── Organization context (shared across chat + task paths) ──────────
@@ -41,8 +44,10 @@ export function formatContextPreamble(context: AttentionPayload["context"]): str
     }
 
     lines.push("### Writing to Org Memory");
+    const orgMemoryAppend = opts.useMcpTools ? "org_memory_append" : "suite_org_memory_append";
+    const orgContextWrite = opts.useMcpTools ? "org_context_write" : "suite_org_context_write";
     lines.push(
-      "Org memory is a first-class responsibility. Record decisions and milestones future agents will care about: architectural decisions (what, why, alternatives), new integrations or dependencies, context shifts, blockers resolved (what broke, how, what to watch), and notable milestones. Use `suite_org_memory_append` for daily notes (append-only). Use `suite_org_context_write` to update curated files (`ORG_MEMORY.md` for long-term knowledge, `ORG_AGENTS.md` for roster changes). Brief, concrete entries beat long essays — one decision per entry.",
+      `Org memory is a first-class responsibility. Record decisions and milestones future agents will care about: architectural decisions (what, why, alternatives), new integrations or dependencies, context shifts, blockers resolved (what broke, how, what to watch), and notable milestones. Use \`${orgMemoryAppend}\` for daily notes (append-only). Use \`${orgContextWrite}\` to update curated files (\`ORG_MEMORY.md\` for long-term knowledge, \`ORG_AGENTS.md\` for roster changes). Brief, concrete entries beat long essays — one decision per entry.`,
     );
     lines.push("");
   }
@@ -56,7 +61,11 @@ export function formatContextPreamble(context: AttentionPayload["context"]): str
     lines.push("");
     lines.push(`[Suite Context]`);
     lines.push(`Space ID: ${context.space.id}`);
-    lines.push(`(use this space_id when calling suite_canvas_create, suite_canvas_update, suite_send_media, suite_task_create, suite_task_get, suite_task_list, suite_task_update, suite_task_complete, suite_plan_create, suite_plan_get, suite_plan_submit, suite_stage_start, suite_stage_list, suite_validation_evaluate, suite_validation_list, stage_complete, report_blocker, or suite_review_request_create)`);
+    if (opts.useMcpTools) {
+      lines.push(`(pass this space_id when a Suite MCP tool requests it)`);
+    } else {
+      lines.push(`(use this space_id when calling suite_canvas_create, suite_canvas_update, suite_send_media, suite_task_create, suite_task_get, suite_task_list, suite_task_update, suite_task_complete, suite_plan_create, suite_plan_get, suite_plan_submit, suite_stage_start, suite_stage_list, suite_validation_evaluate, suite_validation_list, stage_complete, report_blocker, or suite_review_request_create)`);
+    }
     lines.push("");
   }
 

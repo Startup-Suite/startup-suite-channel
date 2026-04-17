@@ -10,6 +10,12 @@ const sessionContexts = new Map<string, unknown>();
 
 let taskWorkers: TaskWorkerController | null = null;
 
+export interface SessionOptions {
+  useMcpTools: boolean;
+}
+
+const sessionOptions = new Map<string, SessionOptions>();
+
 export function setSessionContext(sessionKey: string, context: unknown): void {
   sessionContexts.set(sessionKey, context);
 }
@@ -20,7 +26,22 @@ export function getSessionContext(sessionKey: string | null | undefined): unknow
 }
 
 export function clearSessionContext(sessionKey: string): boolean {
+  sessionOptions.delete(sessionKey);
   return sessionContexts.delete(sessionKey);
+}
+
+export function setSessionOptions(sessionKey: string, opts: SessionOptions): void {
+  sessionOptions.set(sessionKey, opts);
+}
+
+export function getSessionOptions(sessionKey: string | null | undefined): SessionOptions | undefined {
+  if (!sessionKey) return undefined;
+  return sessionOptions.get(sessionKey);
+}
+
+export function resolveAccountOptions(cfg: any, accountId: string): SessionOptions {
+  const account = channelConfigRoot(cfg)?.accounts?.[accountId];
+  return { useMcpTools: Boolean(account?.useMcpTools) };
 }
 
 function loadLegacyConfig(): SuiteConfig {

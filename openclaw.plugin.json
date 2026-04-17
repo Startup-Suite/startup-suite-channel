@@ -47,6 +47,11 @@
                   "type": "number",
                   "description": "Maximum reconnection interval in milliseconds",
                   "default": 60000
+                },
+                "useMcpTools": {
+                  "type": "boolean",
+                  "description": "Skip the channel-era `suite_*` tool-name hints in agent prompts and emit MCP-compatible guidance instead. Enable this once the agent is wired to Suite's /mcp endpoint for tool execution (ADR 0034).",
+                  "default": false
                 }
               }
             }
