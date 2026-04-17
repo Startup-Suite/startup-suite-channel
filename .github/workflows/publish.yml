@@ -18,12 +18,12 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Print npm version
-        # Node 22 bundles npm 10.9+, which already supports OIDC trusted
-        # publishing. Self-upgrading to `npm@latest` has been flaky on the
-        # runner (MODULE_NOT_FOUND for promise-retry), so we just use the
-        # bundled version.
-        run: npm --version
+      - name: Install npm with OIDC support
+        # Node 22 bundles npm 10.9, which predates OIDC trusted publishing
+        # (requires 11.5.1+). `npm@latest` (>=11.6.3) currently fails on the
+        # runner with MODULE_NOT_FOUND: promise-retry. Pin to a known-good
+        # version that has OIDC and installs cleanly.
+        run: npm install -g npm@11.5.2 && npm --version
 
       - run: npm install
 
