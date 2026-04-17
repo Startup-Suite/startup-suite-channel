@@ -1,6 +1,6 @@
 import { type OpenClawConfig, type RuntimeEnv } from "./runtime-api.js";
 import { getSuiteRuntime } from "./runtime.js";
-import { getTaskWorkers, setSessionContext } from "./plugin-state.js";
+import { getTaskWorkers, resolveAccountOptions, setSessionContext, setSessionOptions } from "./plugin-state.js";
 import { buildTaskSessionKey, type TaskPhase } from "./session-key.js";
 import type { AttentionPayload } from "./suite-client.js";
 import type { SuiteClient } from "./suite-client.js";
@@ -44,11 +44,13 @@ export async function handleSuiteInbound(params: {
   const senderName = payload.message.author || (isLifecycleSignal ? "TaskRouter" : "unknown");
   const isGroup = true;
 
-  // Resolve agent route.
-  // For orchestrated signals, use "orchestration" as the peer ID so the route
-  // resolver falls through to the default agent binding. Execution space IDs
-  // aren't in the routing config and would cause a mismatch.
-  const routePeerId = isOrchestrated ? "orchestration" : spaceId;
+  // Resolve agent route. Prefer the Suite agent identifier when Suite packs it
+  // into the signal (newer Suite builds) — that lets per-agent peer bindings
+  // target specific OpenClaw agents instead of falling through to the channel
+  // default. Fall back to "orchestration" (orchestrated signals) or the spaceId
+  // (plain chat) on older Suite builds that don't carry agent identity.
+  const signalAgentPeer = payload.signal?.agent_slug || payload.signal?.agent_id;
+  const routePeerId = signalAgentPeer ?? (isOrchestrated ? "orchestration" : spaceId);
   const route = core.channel.routing.resolveAgentRoute({
     cfg: config,
     channel: CHANNEL_ID,
@@ -69,6 +71,7 @@ export async function handleSuiteInbound(params: {
   );
 
   setSessionContext(route.sessionKey, payload.context);
+  setSessionOptions(route.sessionKey, resolveAccountOptions(config, accountId));
 
   // Simple enriched body - context is now injected via OpenClaw hooks
   const enrichedBody = `**${senderName}**: ${rawBody}`;

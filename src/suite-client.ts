@@ -19,7 +19,19 @@ export interface SuiteHandlers {
 }
 
 export interface AttentionPayload {
-  signal: { reason: string; space_id?: string; task_id?: string; task_status?: string; message_id?: string };
+  signal: {
+    reason: string;
+    space_id?: string;
+    task_id?: string;
+    task_status?: string;
+    message_id?: string;
+    // Target Suite agent for this attention event. Present on Suite versions
+    // that pack the responder's agent identity into the external signal. Used
+    // by the plugin to route to a specific OpenClaw agent via peer-matched
+    // bindings instead of falling through to the channel default.
+    agent_id?: string;
+    agent_slug?: string;
+  };
   message: { content: string; author: string };
   history: Array<{ content: string; author: string; role?: string }>;
   context: {
