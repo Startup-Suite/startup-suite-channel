@@ -73,7 +73,18 @@ export const suitePlugin: ChannelPlugin = {
     }),
   },
 
-  agentTools: [
+  // Channel-era tools are registered here, but suppressed at plugin load when
+  // every configured startup-suite account has `useMcpTools: true` — i.e. the
+  // operator has fully cut over to Suite's `/mcp` endpoint for tool execution
+  // (ADR 0034). Mixed or legacy configs keep the channel tools so existing
+  // installs don't silently lose functionality during migration.
+  agentTools: ({ cfg }: { cfg?: any }) => {
+    const accounts: Record<string, any> = cfg?.channels?.["startup-suite"]?.accounts ?? {};
+    const accountIds = Object.keys(accounts);
+    const allAccountsUseMcpTools =
+      accountIds.length > 0 && accountIds.every((id) => accounts[id]?.useMcpTools === true);
+    if (allAccountsUseMcpTools) return [];
+    return [
     {
       name: "suite_canvas_create",
       label: "Create Suite Canvas",
@@ -595,7 +606,8 @@ export const suitePlugin: ChannelPlugin = {
       }),
       execute: suiteToolExecute("org_memory_search"),
     },
-  ],
+    ];
+  },
 
   outbound: {
     deliveryMode: "direct",
