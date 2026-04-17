@@ -124,7 +124,34 @@ Add the following to your `~/.openclaw/openclaw.json`:
 
 Each named account becomes a separate WebSocket connection. Tools register once globally — no conflicts regardless of how many accounts are configured.
 
-**Agent routing:** Each account routes to its own OpenClaw agent via the standard `agents.list` routing config. By default, all accounts route to the default agent. To route accounts to specific agents, configure your agent routing in `openclaw.json`.
+### Routing accounts to agents
+
+Add `bindings` entries in `openclaw.json` to point each account at a specific OpenClaw agent. There are two important gotchas to get right:
+
+**Gotcha 1: `match.accountId` is required for named accounts.** OpenClaw's router indexes bindings by account. A binding with **no** `match.accountId` is silently filed under `"default"` and only matches inbound events whose account is literally `default`. If you name your accounts (e.g., `beacon`, `sage`, `higgins`), bindings without `accountId` will not match and routing will fall through to the first agent in `agents.list` — usually `main`. Use `accountId: "<account-name>"` or `accountId: "*"` (any account):
+
+```json
+{
+  "bindings": [
+    { "agentId": "beacon-agent", "match": { "channel": "startup-suite", "accountId": "beacon" } },
+    { "agentId": "sage-agent",   "match": { "channel": "startup-suite", "accountId": "sage" } }
+  ]
+}
+```
+
+**Gotcha 2: Per-Suite-agent routing** — if several Suite-side agents share one runtime account and you want each routed to a different OpenClaw agent, use peer-matched bindings on the Suite `agent_slug` (available in the attention signal on Suite versions with agent identity packed in — ADR 0034 era). List peer-matched bindings **before** the channel-wildcard fallback:
+
+```json
+{
+  "bindings": [
+    { "agentId": "ops-agent",   "match": { "channel": "startup-suite", "accountId": "*", "peer": { "id": "ops-bot",  "kind": "group" } } },
+    { "agentId": "reply-agent", "match": { "channel": "startup-suite", "accountId": "*", "peer": { "id": "concierge", "kind": "group" } } },
+    { "agentId": "default-agent","match": { "channel": "startup-suite", "accountId": "*" } }
+  ]
+}
+```
+
+When a Suite agent appears in multiple spaces (chat rooms), the plugin automatically appends the space id to the session key so each room keeps its own conversation history — no cross-space context bleed.
 
 ### Configuration reference
 
@@ -136,6 +163,7 @@ Each named account becomes a separate WebSocket connection. Tools register once 
 | `autoJoinSpaces` | Space IDs to auto-join on connect | `[]` |
 | `reconnectIntervalMs` | Initial reconnect delay (ms) | `5000` |
 | `maxReconnectIntervalMs` | Max reconnect delay (ms) | `60000` |
+| `useMcpTools` | Skip the channel-era `suite_*` tool-name hints in agent prompts and emit MCP-compatible guidance instead. Enable once the agent consumes Suite tools via the `/mcp` endpoint (ADR 0034). | `false` |
 
 ---
 
@@ -244,6 +272,9 @@ This removes the extension directory and cleans up `openclaw.json`.
 
 **Duplicate messages**
 - Restart OpenClaw gateway to clear stale connections: `openclaw gateway restart`
+
+**All messages route to the first agent in `agents.list` (usually `main`) even though you wrote a binding for another agent**
+- Your binding's `match` block is missing `accountId`. OpenClaw's router buckets such bindings under the internal account name `"default"` and will not match inbound events on a named account. Add `"accountId": "<your-account-name>"` (or `"accountId": "*"` to match any account) to each `bindings[].match` entry for this channel. See [Routing accounts to agents](#routing-accounts-to-agents) for full examples.
 
 ---
 
