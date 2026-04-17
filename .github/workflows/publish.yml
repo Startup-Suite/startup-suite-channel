@@ -18,8 +18,12 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Upgrade npm for OIDC support
-        run: npm install -g npm@latest && npm --version
+      - name: Print npm version
+        # Node 22 bundles npm 10.9+, which already supports OIDC trusted
+        # publishing. Self-upgrading to `npm@latest` has been flaky on the
+        # runner (MODULE_NOT_FOUND for promise-retry), so we just use the
+        # bundled version.
+        run: npm --version
 
       - run: npm install
 
