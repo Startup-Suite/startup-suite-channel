@@ -65,6 +65,17 @@ export async function handleSuiteInbound(params: {
   const { rememberSpaceAccount } = await import("./plugin-state.js");
   rememberSpaceAccount(spaceId, accountId);
 
+  // Space-scope the session key: when routing uses the Suite agent identity
+  // as the peer (so the same OpenClaw agent handles the agent across every
+  // space), the resolved session key collapses all spaces into one session,
+  // causing context bleed between rooms. Append the space_id to keep per-
+  // space history isolated while preserving the agent-selection routing.
+  // For task-orchestrated signals the sessionKey is already task-scoped
+  // below (buildTaskSessionKey), so skip here; task sessions re-isolate.
+  if (!isOrchestrated && signalAgentPeer && spaceId && spaceId !== "unknown") {
+    route.sessionKey = `${route.sessionKey}:${spaceId}`;
+  }
+
   runtime.log(
     `[suite-inbound] reason=${signalReason || "chat"} task=${taskId || "none"} ` +
     `space=${spaceId} orchestrated=${isOrchestrated}`
