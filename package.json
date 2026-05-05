@@ -10,7 +10,8 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test:tool-contract": "node scripts/check-tool-contract.mjs"
+    "test:tool-contract": "node scripts/check-tool-contract.mjs",
+    "test:client-info-handshake": "node scripts/check-client-info-handshake.mjs"
   },
   "openclaw": {
     "extensions": [
