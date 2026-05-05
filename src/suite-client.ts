@@ -1,6 +1,36 @@
 // @ts-ignore phoenix ships JS without local type declarations in this plugin checkout
 import { Socket } from "phoenix";
 import WebSocket from "ws";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+// Federation handshake: declare what client product is connecting so the Suite
+// dispatch renderer can distinguish OpenClaw runtimes (multi-agent per
+// connection) from Claude-channel runtimes (single-agent per connection).
+// Suite-side treats missing client_info as "unknown" (forward compatible).
+const PLUGIN_VERSION: string = (() => {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    // src/suite-client.ts → ../package.json from compiled dist/src/ as well
+    const pkgPath = join(here, "..", "..", "package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: string };
+    if (pkg.version) return pkg.version;
+  } catch {}
+  // Fallback: try one level up (in case of a flatter dist layout)
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pkgPath = join(here, "..", "package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: string };
+    if (pkg.version) return pkg.version;
+  } catch {}
+  return "unknown";
+})();
+
+export const CLIENT_INFO = {
+  product: "openclaw" as const,
+  version: PLUGIN_VERSION,
+};
 
 export interface SuiteConfig {
   url: string;
@@ -243,7 +273,9 @@ export class SuiteClient {
     if (!this.socket) return;
 
     const topic = `runtime:${this.config.runtimeId}`;
-    this.channel = this.socket.channel(topic, {});
+    this.channel = this.socket.channel(topic, {
+      client_info: CLIENT_INFO,
+    });
 
     this.channel.on("capabilities", (payload: { tools: any[]; tool_count: number }) => {
       const registered = [
