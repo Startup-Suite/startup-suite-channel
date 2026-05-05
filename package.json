@@ -3,7 +3,7 @@
   "version": "0.6.1",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Startup-Suite/startup-suite-channel.git"
+    "url": "https://github.com/Startup-Suite/openclaw-suite-channel.git"
   },
   "type": "module",
   "description": "OpenClaw channel plugin for Startup Suite federation",

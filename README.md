@@ -28,8 +28,8 @@ First, register a runtime in Suite: **Agent Resources → Add Agent → Federate
 ### Interactive (recommended)
 
 ```bash
-git clone https://github.com/Startup-Suite/startup-suite-channel.git
-cd startup-suite-channel
+git clone https://github.com/Startup-Suite/openclaw-suite-channel.git
+cd openclaw-suite-channel
 bash install.sh
 ```
 
@@ -243,7 +243,7 @@ The plan engine advances stages automatically when all validations on a stage re
 ## Uninstall
 
 ```bash
-cd startup-suite-channel
+cd openclaw-suite-channel
 bash uninstall.sh
 openclaw gateway restart
 ```
