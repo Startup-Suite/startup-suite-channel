@@ -56,7 +56,11 @@ function diff(left, right) {
 const channelSource = fs.readFileSync(channelPath, "utf8");
 const suiteClientSource = fs.readFileSync(suiteClientPath, "utf8");
 
-const agentToolsBlock = extractBlock(channelSource, "agentTools: [", "\n\n  outbound:");
+// `agentTools` was refactored from an array literal to a function that returns
+// an array (so the channel can suppress it when every account uses MCP tools).
+// Anchor on the post-suppression `return [` and end at the function's `];`
+// closer, which sits just before `},\n\n  outbound:`.
+const agentToolsBlock = extractBlock(channelSource, "return [", "\n    ];\n  },\n\n  outbound:");
 const registeredBlock = extractBlock(suiteClientSource, "const registered = [", "];\n      const available");
 
 const channelToolNames = uniqueSorted(extractQuotedNames(agentToolsBlock));
@@ -64,8 +68,15 @@ const registeredToolNames = uniqueSorted(
   extractQuotedNames(registeredBlock, /"([^"]+)"/g),
 );
 
+// Some entries in the registered list intentionally name Suite's wire-format
+// tool identifiers (e.g. dotted `skill.list`) so the capability-check diff in
+// suite-client.ts does not warn. They have no agentTools counterpart by name.
+const wireOnlyRegistered = new Set(registeredToolNames.filter((name) => name.includes(".")));
+
 const missingFromRegistered = diff(channelToolNames, registeredToolNames);
-const extraInRegistered = diff(registeredToolNames, channelToolNames);
+const extraInRegistered = diff(registeredToolNames, channelToolNames).filter(
+  (name) => !wireOnlyRegistered.has(name),
+);
 const missingLifecycle = diff(requiredLifecycleTools, channelToolNames);
 const missingContextTools = diff(requiredContextTools, channelToolNames);
 

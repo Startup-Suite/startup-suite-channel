@@ -606,6 +606,81 @@ export const suitePlugin: ChannelPlugin = {
       }),
       execute: suiteToolExecute("org_memory_search"),
     },
+    // ── Skill registry tools ──────────────────────────────────────────
+    // NOTE: Suite registers these with dotted names (`skill.list`, `skill.get`,
+    // `skill.upsert`) and has no underscore→dot translation in the runtime
+    // channel path (Platform.Federation.ToolSurface.execute matches strings
+    // exactly). The OpenClaw-facing tool name is underscored (per harness
+    // convention) but `suiteToolExecute` is invoked with the dotted name so
+    // the wire payload reaches the right handler.
+    {
+      name: "suite_skill_list",
+      label: "List Suite Skills",
+      description:
+        "List registered skills (centrally-distributed markdown playbooks) from the Suite skill registry. Returns summaries without the content body. Use `query` to filter by case-insensitive substring against name, description, or slug.",
+      parameters: Type.Object({
+        query: Type.Optional(Type.String({ description: "Case-insensitive substring to filter by. Omit to list everything." })),
+      }),
+      execute: suiteToolExecute("skill.list"),
+    },
+    {
+      name: "suite_skill_get",
+      label: "Get Suite Skill",
+      description:
+        "Fetch a full skill (including markdown content) from the Suite skill registry by slug or id. Exactly one of `slug` or `id` is required.",
+      parameters: Type.Object({
+        slug: Type.Optional(Type.String({ description: "Skill slug (preferred lookup key)." })),
+        id: Type.Optional(Type.String({ description: "Skill UUID (alternative lookup key)." })),
+      }),
+      execute: suiteToolExecute("skill.get"),
+    },
+    {
+      name: "suite_skill_upsert",
+      label: "Upsert Suite Skill",
+      description:
+        "Create or update a skill in the Suite skill registry by name. Slug is derived from the name. Existing skills with the same slug are replaced (content + description). Partial updates are not supported — pass the full content on every update.",
+      parameters: Type.Object({
+        name: Type.String({ description: "Human-readable name. Slug is derived from this." }),
+        description: Type.String({ description: "One-line summary shown in skill.list." }),
+        content: Type.String({ description: "Full markdown body of the skill playbook." }),
+      }),
+      execute: suiteToolExecute("skill.upsert"),
+    },
+    // Unprefixed aliases — let dispatch prompts referring to canonical tool
+    // names (e.g. `skill_list`) resolve without the `suite_` prefix.
+    {
+      name: "skill_list",
+      label: "List Skills",
+      description:
+        "Alias for suite_skill_list. Use when prompts refer to skill_list directly.",
+      parameters: Type.Object({
+        query: Type.Optional(Type.String({ description: "Case-insensitive substring to filter by. Omit to list everything." })),
+      }),
+      execute: suiteToolExecute("skill.list"),
+    },
+    {
+      name: "skill_get",
+      label: "Get Skill",
+      description:
+        "Alias for suite_skill_get. Use when prompts refer to skill_get directly.",
+      parameters: Type.Object({
+        slug: Type.Optional(Type.String({ description: "Skill slug (preferred lookup key)." })),
+        id: Type.Optional(Type.String({ description: "Skill UUID (alternative lookup key)." })),
+      }),
+      execute: suiteToolExecute("skill.get"),
+    },
+    {
+      name: "skill_upsert",
+      label: "Upsert Skill",
+      description:
+        "Alias for suite_skill_upsert. Use when prompts refer to skill_upsert directly.",
+      parameters: Type.Object({
+        name: Type.String({ description: "Human-readable name. Slug is derived from this." }),
+        description: Type.String({ description: "One-line summary shown in skill.list." }),
+        content: Type.String({ description: "Full markdown body of the skill playbook." }),
+      }),
+      execute: suiteToolExecute("skill.upsert"),
+    },
     ];
   },
 
