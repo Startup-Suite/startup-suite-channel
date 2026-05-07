@@ -47,7 +47,7 @@ export function formatContextPreamble(
     const orgMemoryAppend = opts.useMcpTools ? "org_memory_append" : "suite_org_memory_append";
     const orgContextWrite = opts.useMcpTools ? "org_context_write" : "suite_org_context_write";
     lines.push(
-      `Org memory is a first-class responsibility. Record decisions and milestones future agents will care about: architectural decisions (what, why, alternatives), new integrations or dependencies, context shifts, blockers resolved (what broke, how, what to watch), and notable milestones. Use \`${orgMemoryAppend}\` for daily notes (append-only). Use \`${orgContextWrite}\` to update curated files (\`ORG_MEMORY.md\` for long-term knowledge, \`ORG_AGENTS.md\` for roster changes). Brief, concrete entries beat long essays — one decision per entry.`,
+      `Org memory is a first-class responsibility. Record decisions and milestones future agents will care about: architectural decisions (what, why, alternatives), new integrations or dependencies, context shifts, blockers resolved (what broke, how, what to watch), and notable milestones. Use \`${orgMemoryAppend}\` for short-lived notes about today's activity (append-only, surfaces in \`ORG_NOTES-YYYY-MM-DD\`). For anything worth preserving — decisions, patterns, lessons — update \`ORG_MEMORY.md\` via \`${orgContextWrite}\`. \`ORG_MEMORY.md\` is the canonical long-term store; do not try to record long-term entries via \`${orgMemoryAppend}\`. Brief, concrete entries beat long essays — one decision per entry.`,
     );
     lines.push("");
   }

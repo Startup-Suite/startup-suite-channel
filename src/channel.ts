@@ -582,10 +582,9 @@ export const suitePlugin: ChannelPlugin = {
       name: "suite_org_memory_append",
       label: "Append Org Memory Entry",
       description:
-        "Append a new entry to organizational memory. Entries are append-only and timestamped. Use to record decisions, observations, or learnings for future reference.",
+        "Append a short-lived note about today's activity to org memory. Entries are append-only and timestamped, and surface in agent context as ORG_NOTES-YYYY-MM-DD for the last 2 days. For curated long-term knowledge — decisions, patterns, lessons — update ORG_MEMORY.md via suite_org_context_write instead.",
       parameters: Type.Object({
         content: Type.String({ description: "Memory content to append" }),
-        memory_type: Type.Optional(Type.String({ description: "Memory type: 'daily' (default) or 'long_term'" })),
         date: Type.Optional(Type.String({ description: "ISO 8601 date (YYYY-MM-DD) for the entry (default: today)" })),
         authored_by: Type.Optional(Type.String({ description: "UUID of the user or agent authoring this entry" })),
         metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Additional metadata for the memory entry" })),
@@ -596,10 +595,9 @@ export const suitePlugin: ChannelPlugin = {
       name: "suite_org_memory_search",
       label: "Search Org Memory",
       description:
-        "Search organizational memory entries with optional filters. Supports case-insensitive substring matching, date ranges, and memory type filtering.",
+        "Search organizational memory entries with optional filters. Supports case-insensitive substring matching and date ranges. For long-term curated knowledge, read ORG_MEMORY.md via suite_org_context_read instead.",
       parameters: Type.Object({
         query: Type.Optional(Type.String({ description: "Case-insensitive substring search query" })),
-        memory_type: Type.Optional(Type.String({ description: "Filter by memory type: 'daily' or 'long_term'" })),
         date_from: Type.Optional(Type.String({ description: "ISO 8601 date (YYYY-MM-DD) — include entries on or after this date" })),
         date_to: Type.Optional(Type.String({ description: "ISO 8601 date (YYYY-MM-DD) — include entries on or before this date" })),
         limit: Type.Optional(Type.Number({ description: "Maximum number of results to return (default: 50)" })),
